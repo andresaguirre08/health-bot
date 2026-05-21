@@ -52,6 +52,33 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if handled:
         return
 
+    # Confirmar guardado de comida
+    if context.user_data.get("waiting_meal_confirm"):
+        if update.message.text.upper().strip() == "SI":
+            try:
+                from bot.db.meals import get_or_create_user, save_meal
+                meal = context.user_data["pending_meal"]
+                user_id = context.user_data["pending_user_id"]
+                await save_meal(
+                    user_id=user_id,
+                    calories=meal.get("calories", 0),
+                    protein=meal.get("protein_g", 0),
+                    carbs=meal.get("carbs_g", 0),
+                    fat=meal.get("fat_g", 0),
+                    description=meal.get("description", ""),
+                    raw_response=meal.get("description", "")
+                )
+                context.user_data["waiting_meal_confirm"] = False
+                context.user_data["pending_meal"] = None
+                await update.message.reply_text("✅ Comida guardada en tu registro.")
+            except Exception as e:
+                await update.message.reply_text(f"❌ Error guardando: {str(e)}")
+        else:
+            context.user_data["waiting_meal_confirm"] = False
+            context.user_data["pending_meal"] = None
+            await update.message.reply_text("Ok, no guardé nada.")
+        return
+
     try:
         telegram_id = update.effective_user.id
         name = update.effective_user.first_name
@@ -63,8 +90,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = await get_or_create_user(telegram_id, name)
         user_context = await build_user_context(user_id)
 
-        response = await chat_with_coach(update.message.text, user_context)
-        await update.message.reply_text(response)
+        result = await chat_with_coach(update.message.text, user_context)
+
+        await update.message.reply_text(result["text"])
+
+        if result["meal_data"]:
+            context.user_data["waiting_meal_confirm"] = True
+            context.user_data["pending_meal"] = result["meal_data"]
+            context.user_data["pending_user_id"] = user_id
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
@@ -85,14 +118,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = await get_or_create_user(telegram_id, name)
         user_context = await build_user_context(user_id)
 
-        # Descargar audio
         file = await update.message.voice.get_file()
         audio_bytes = await file.download_as_bytearray()
 
-        # Transcribir con Groq Whisper
-        groq_api_key = os.getenv("GROQ_API_KEY")
-        groq_client = Groq(api_key=groq_api_key)
-
+        groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         transcription = groq_client.audio.transcriptions.create(
             file=("audio.ogg", bytes(audio_bytes)),
             model="whisper-large-v3",
@@ -100,11 +129,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         audio_text = transcription.text
-        response = await chat_with_coach(audio_text, user_context)
+        result = await chat_with_coach(audio_text, user_context)
 
         await update.message.reply_text(
-            f"🎙 Escuché: {audio_text}\n\n{response}"
+            f"🎙 Escuché: {audio_text}\n\n{result['text']}"
         )
+
+        if result["meal_data"]:
+            context.user_data["waiting_meal_confirm"] = True
+            context.user_data["pending_meal"] = result["meal_data"]
+            context.user_data["pending_user_id"] = user_id
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
