@@ -68,7 +68,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
-
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎙 Escuchando... ⏳")
 
@@ -79,52 +78,34 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from bot.db.meals import get_or_create_user
         from bot.utils.context_builder import build_user_context
         from bot.agents.coach import chat_with_coach
+        from bot.utils.config import GROQ_API_KEY
+        from groq import Groq
 
         user_id = await get_or_create_user(telegram_id, name)
         user_context = await build_user_context(user_id)
 
+        # Descargar audio
         file = await update.message.voice.get_file()
         audio_bytes = await file.download_as_bytearray()
 
-        import base64
-        import anthropic
-        from bot.utils.config import ANTHROPIC_API_KEY
-
-        audio_b64 = base64.standard_b64encode(bytes(audio_bytes)).decode("utf-8")
-        claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-        transcription = claude.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=256,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Transcribí exactamente lo que dice este audio. Solo devolvé el texto transcripto, sin comentarios."
-                    },
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "audio/ogg",
-                            "data": audio_b64
-                        }
-                    }
-                ]
-            }]
+        # Transcribir con Groq Whisper
+        groq_client = Groq(api_key=GROQ_API_KEY)
+        transcription = groq_client.audio.transcriptions.create(
+            file=("audio.ogg", bytes(audio_bytes)),
+            model="whisper-large-v3",
+            language="es"
         )
 
-        audio_text = transcription.content[0].text
+        audio_text = transcription.text
         response = await chat_with_coach(audio_text, user_context)
 
         await update.message.reply_text(
-            f"🎙 Escuché:_{audio_text}_\n\n{response}",
-            parse_mode="Markdown"
+            f"🎙 Escuché: {audio_text}\n\n{response}"
         )
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+
 
 
 async def post_init(app):
