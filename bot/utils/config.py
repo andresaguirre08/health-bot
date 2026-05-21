@@ -1,0 +1,25 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GARMIN_EMAIL = os.getenv("GARMIN_EMAIL")
+GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD")
+POLAR_CLIENT_ID = os.getenv("POLAR_CLIENT_ID")
+POLAR_CLIENT_SECRET = os.getenv("POLAR_CLIENT_SECRET")
+POLAR_REDIRECT_URL = os.getenv("POLAR_REDIRECT_URL")
+
+# Perfil de Andrés
+HEIGHT_CM = 175
+CURRENT_BF_PCT = 30.7
+CURRENT_MUSCLE_KG = 35.7
+
+# Objetivos nutricionales
+DAILY_CALORIES = 2000
+DAILY_PROTEIN_G = 180
+DAILY_CARBS_G = 150
+DAILY_FAT_G = 60
