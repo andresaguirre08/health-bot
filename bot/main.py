@@ -1,4 +1,5 @@
 import logging
+import os
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -68,6 +69,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
+
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎙 Escuchando... ⏳")
 
@@ -78,7 +80,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from bot.db.meals import get_or_create_user
         from bot.utils.context_builder import build_user_context
         from bot.agents.coach import chat_with_coach
-        from bot.utils.config import GROQ_API_KEY
         from groq import Groq
 
         user_id = await get_or_create_user(telegram_id, name)
@@ -89,7 +90,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         audio_bytes = await file.download_as_bytearray()
 
         # Transcribir con Groq Whisper
-        groq_client = Groq(api_key=GROQ_API_KEY)
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        groq_client = Groq(api_key=groq_api_key)
+
         transcription = groq_client.audio.transcriptions.create(
             file=("audio.ogg", bytes(audio_bytes)),
             model="whisper-large-v3",
@@ -105,7 +108,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
-
 
 
 async def post_init(app):
