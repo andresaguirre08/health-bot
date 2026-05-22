@@ -65,16 +65,15 @@ async def save_chat_message(user_id: str, role: str, content: str):
 async def chat_with_coach(user_message: str, user_context: str, user_id: str = None) -> dict:
     full_system = user_context + "\n\n" + SYSTEM_PROMPT if user_context else SYSTEM_PROMPT
 
-    # Cargar historial de la sesión
     messages = []
     if user_id:
         history = await get_chat_history(user_id)
         for h in history:
             messages.append({"role": h["role"], "content": h["content"]})
 
-    # Agregar mensaje actual
     messages.append({"role": "user", "content": user_message})
 
+    # Llamada principal para respuesta conversacional
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=400,
@@ -94,8 +93,9 @@ async def chat_with_coach(user_message: str, user_context: str, user_id: str = N
             meal_data = None
     else:
         clean_text = full_text
+        # Si no generó MEAL_DATA, forzar extracción con segunda llamada
+        meal_data = await extract_meal_data(user_message, user_context)
 
-    # Guardar en historial
     if user_id:
         await save_chat_message(user_id, "user", user_message)
         await save_chat_message(user_id, "assistant", clean_text)
@@ -104,3 +104,28 @@ async def chat_with_coach(user_message: str, user_context: str, user_id: str = N
         "text": clean_text,
         "meal_data": meal_data
     }
+
+
+async def extract_meal_data(user_message: str, user_context: str) -> dict | None:
+    detection_response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=150,
+        system="""Analizá si el mensaje describe una comida que el usuario ya consumió.
+Si SÍ describe una comida consumida, respondé SOLO con JSON en este formato exacto:
+{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}
+
+Si NO describe una comida consumida (es una pregunta, duda o consulta), respondé solo con: NO
+
+No agregues ningún texto extra.""",
+        messages=[{"role": "user", "content": user_message}]
+    )
+
+    result_text = detection_response.content[0].text.strip()
+
+    if result_text == "NO" or result_text.startswith("NO"):
+        return None
+
+    try:
+        return json.loads(result_text)
+    except:
+        return None
