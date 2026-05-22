@@ -39,7 +39,7 @@ def start_scheduler(app):
     )
     scheduler.add_job(
         daily_summary,
-        CronTrigger(hour=22, minute=0),
+        CronTrigger(hour=23, minute=30),
         args=[app],
         id="daily_summary",
         replace_existing=True
@@ -155,15 +155,22 @@ async def check_protein_evening(app):
 async def daily_summary(app):
     try:
         from bot.db.client import supabase
+        from bot.utils.config import ANTHROPIC_API_KEY
+        import anthropic
+        from datetime import datetime
+        import pytz
+
+        bogota_tz = pytz.timezone("America/Bogota")
+        today = datetime.now(bogota_tz).strftime("%Y-%m-%d")
+
         users = await get_user_info()
 
         for user in users:
-            today = date.today().isoformat()
-
             meals = supabase.table("meals")\
-                .select("calories, protein_g, carbs_g, fat_g")\
+                .select("calories, protein_g, carbs_g, fat_g, meal_type")\
                 .eq("user_id", user["id"])\
                 .gte("logged_at", today)\
+                .lt("logged_at", today + "T23:59:59-05:00")\
                 .execute()
 
             workouts = supabase.table("workouts")\
@@ -172,45 +179,78 @@ async def daily_summary(app):
                 .eq("workout_date", today)\
                 .execute()
 
+            # Medición más reciente
+            last_measurement = supabase.table("body_measurements")\
+                .select("weight_kg, body_fat_pct")\
+                .eq("user_id", user["id"])\
+                .order("measured_at", desc=True)\
+                .limit(1)\
+                .execute()
+
             total_calories = sum(m.get("calories") or 0 for m in meals.data)
             total_protein = sum(float(m.get("protein_g") or 0) for m in meals.data)
             total_carbs = sum(float(m.get("carbs_g") or 0) for m in meals.data)
             total_fat = sum(float(m.get("fat_g") or 0) for m in meals.data)
             total_burned = sum(w.get("calories_burned") or 0 for w in workouts.data)
+            net_calories = total_calories - total_burned
 
             protein_goal = user.get("daily_protein_g", 180)
             calorie_goal = user.get("daily_calories", 2000)
             protein_pct = round((total_protein / protein_goal) * 100) if protein_goal else 0
-            protein_remaining = max(0, protein_goal - total_protein)
+
+            current_weight = last_measurement.data[0].get("weight_kg") if last_measurement.data else None
+            current_bf = last_measurement.data[0].get("body_fat_pct") if last_measurement.data else None
 
             workout_text = ""
             if workouts.data:
-                workout_text = f"\n🏋 Entrenamientos: {len(workouts.data)}\n"
                 for w in workouts.data:
-                    workout_text += f"- {w.get('activity_type')}: {w.get('duration_min')} min"
-                    if w.get('calories_burned'):
-                        workout_text += f" — {w.get('calories_burned')} kcal"
-                    workout_text += "\n"
-                workout_text += f"- Total quemado: {total_burned} kcal\n"
+                    workout_text += f"- {w.get('activity_type')}: {w.get('duration_min')} min — {w.get('calories_burned')} kcal\n"
+            else:
+                workout_text = "- Sin entrenamientos registrados hoy\n"
 
-            status = "✅" if protein_pct >= 90 else "⚠️" if protein_pct >= 60 else "❌"
+            # Generar feedback con Claude
+            claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+            prompt = f"""Andrés tuvo este día:
+- Calorías consumidas: {total_calories} / {calorie_goal} kcal
+- Proteína: {total_protein:.0f}g / {protein_goal}g ({protein_pct}%)
+- Carbohidratos: {total_carbs:.0f}g
+- Grasas: {total_fat:.0f}g
+- Calorías quemadas entrenando: {total_burned} kcal
+- Calorías netas: {net_calories} kcal
+- Peso actual: {current_weight} kg (objetivo: 85 kg)
+- % Grasa actual: {current_bf}% (objetivo: menos de 20%)
+
+Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa para que llegue a su objetivo de 85kg y menos de 20% de grasa. Sin asteriscos ni markdown. Tono directo y personal."""
+
+            feedback_response = claude.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            feedback = feedback_response.content[0].text
 
             msg = (
                 f"📊 Resumen del día — {today}\n\n"
-                f"Nutrición:\n"
+                f"🍽 Nutrición:\n"
                 f"- Calorías: {total_calories} / {calorie_goal} kcal\n"
-                f"- Proteína: {total_protein:.0f}g / {protein_goal}g ({protein_pct}%) {status}\n"
+                f"- Proteína: {total_protein:.0f}g / {protein_goal}g ({protein_pct}%)\n"
                 f"- Carbohidratos: {total_carbs:.0f}g\n"
-                f"- Grasas: {total_fat:.0f}g\n"
-                f"{workout_text}\n"
-                f"{'✅ Excelente día, objetivo de proteína cumplido!' if protein_remaining == 0 else f'Proteína pendiente: {protein_remaining:.0f}g'}"
+                f"- Grasas: {total_fat:.0f}g\n\n"
+                f"🏋 Ejercicio:\n"
+                f"{workout_text}"
+                f"- Calorías quemadas: {total_burned} kcal\n"
+                f"- Calorías netas: {net_calories} kcal\n\n"
+                f"🎯 Progreso hacia objetivo:\n"
+                f"- Peso: {current_weight} kg → objetivo 85 kg\n"
+                f"- Grasa: {current_bf}% → objetivo menos de 20%\n\n"
+                f"💬 {feedback}"
             )
 
             await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
 
     except Exception as e:
         logger.error(f"Error resumen diario: {e}")
-
 
 async def sync_garmin_auto(app):
     try:
