@@ -39,11 +39,11 @@ async def build_user_context(user_id: str) -> str:
 
     # Comidas de hoy
     today_meals = supabase.table("meals")\
-        .select("calories, protein_g, carbs_g, fat_g, description, logged_at")\
-        .eq("user_id", user_id)\
-        .gte("logged_at", today)\
-        .lt("logged_at", today + "T23:59:59-05:00")\
-        .execute()
+    .select("calories, protein_g, carbs_g, fat_g, description, logged_at")\
+    .eq("user_id", user_id)\
+    .gte("logged_at", today + "T00:00:00-05:00")\
+    .lte("logged_at", today + "T23:59:59-05:00")\
+    .execute()
 
     # Promedio nutricional últimos 7 días
     week_meals = supabase.table("meals")\
@@ -155,11 +155,11 @@ PROMEDIOS ÚLTIMOS 7 DÍAS:
 async def get_today_totals(user_id: str) -> dict:
     today = get_today_bogota()
     result = supabase.table("meals")\
-        .select("calories, protein_g, carbs_g, fat_g")\
-        .eq("user_id", user_id)\
-        .gte("logged_at", today)\
-        .lt("logged_at", today + "T23:59:59-05:00")\
-        .execute()
+    .select("calories, protein_g, carbs_g, fat_g, meal_type")\
+    .eq("user_id", user_id)\
+    .gte("logged_at", today + "T00:00:00-05:00")\
+    .lte("logged_at", today + "T23:59:59-05:00")\
+    .execute()
 
     totals = {"calories": 0, "protein": 0.0, "carbs": 0.0, "fat": 0.0}
     for meal in result.data:

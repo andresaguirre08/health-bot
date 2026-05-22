@@ -105,11 +105,11 @@ async def get_today_totals(user_id: str) -> dict:
     today = datetime.now(BOGOTA_TZ).strftime("%Y-%m-%d")
 
     result = supabase.table("meals")\
-        .select("calories, protein_g, carbs_g, fat_g, meal_type")\
-        .eq("user_id", user_id)\
-        .gte("logged_at", today)\
-        .lt("logged_at", today + "T23:59:59-05:00")\
-        .execute()
+    .select("calories, protein_g, carbs_g, fat_g, meal_type")\
+    .eq("user_id", user_id)\
+    .gte("logged_at", today + "T00:00:00-05:00")\
+    .lte("logged_at", today + "T23:59:59-05:00")\
+    .execute()
 
     totals = {
         "calories": 0,

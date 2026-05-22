@@ -1,69 +1,75 @@
 import logging
-from datetime import date
+from datetime import datetime, timedelta
+import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone="America/Bogota")
+BOGOTA_TZ = pytz.timezone("America/Bogota")
+
+
+def get_today_bogota():
+    return datetime.now(BOGOTA_TZ).strftime("%Y-%m-%d")
 
 
 def start_scheduler(app):
     scheduler.add_job(
-    remind_vitamins,
-    CronTrigger(hour=8, minute=0, timezone="America/Bogota"),
-    args=[app],
-    id="vitamins",
-    replace_existing=True
+        remind_vitamins,
+        CronTrigger(hour=8, minute=0, timezone="America/Bogota"),
+        args=[app],
+        id="vitamins",
+        replace_existing=True
     )
     scheduler.add_job(
-    remind_creatine,
-    CronTrigger(hour=12, minute=0, timezone="America/Bogota"),
-    args=[app],
-    id="creatine",
-    replace_existing=True
+        remind_creatine,
+        CronTrigger(hour=12, minute=0, timezone="America/Bogota"),
+        args=[app],
+        id="creatine",
+        replace_existing=True
     )
     scheduler.add_job(
-    check_protein_midday,
-    CronTrigger(hour=14, minute=0, timezone="America/Bogota"),
-    args=[app],
-    id="protein_midday",
-    replace_existing=True
+        check_protein_midday,
+        CronTrigger(hour=14, minute=0, timezone="America/Bogota"),
+        args=[app],
+        id="protein_midday",
+        replace_existing=True
     )
     scheduler.add_job(
-    check_protein_evening,
-    CronTrigger(hour=19, minute=0, timezone="America/Bogota"),
-    args=[app],
-    id="protein_evening",
-    replace_existing=True
+        check_protein_evening,
+        CronTrigger(hour=19, minute=0, timezone="America/Bogota"),
+        args=[app],
+        id="protein_evening",
+        replace_existing=True
     )
     scheduler.add_job(
-    daily_summary,
-    CronTrigger(hour=23, minute=30, timezone="America/Bogota"),
-    args=[app],
-    id="daily_summary",
-    replace_existing=True
+        daily_summary,
+        CronTrigger(hour=23, minute=30, timezone="America/Bogota"),
+        args=[app],
+        id="daily_summary",
+        replace_existing=True
     )
     scheduler.add_job(
-    sync_garmin_auto,
-    CronTrigger(hour=23, minute=0, timezone="America/Bogota"),
-    args=[app],
-    id="garmin_sync",
-    replace_existing=True
+        sync_garmin_auto,
+        CronTrigger(hour=23, minute=0, timezone="America/Bogota"),
+        args=[app],
+        id="garmin_sync",
+        replace_existing=True
     )
     scheduler.add_job(
-    weekend_message,
-    CronTrigger(day_of_week="fri", hour=18, minute=0, timezone="America/Bogota"),
-    args=[app],
-    id="weekend_message",
-    replace_existing=True
+        weekend_message,
+        CronTrigger(day_of_week="fri", hour=18, minute=0, timezone="America/Bogota"),
+        args=[app],
+        id="weekend_message",
+        replace_existing=True
     )
     scheduler.add_job(
-    check_anthropic_usage,
-    CronTrigger(hour=9, minute=0, timezone="America/Bogota"),
-    args=[app],
-    id="check_anthropic_usage",
-    replace_existing=True
+        check_anthropic_usage,
+        CronTrigger(hour=9, minute=0, timezone="America/Bogota"),
+        args=[app],
+        id="check_anthropic_usage",
+        replace_existing=True
     )
 
     scheduler.start()
@@ -106,11 +112,12 @@ async def check_protein_midday(app):
         users = await get_user_info()
 
         for user in users:
-            today = date.today().isoformat()
+            today = get_today_bogota()
             meals = supabase.table("meals")\
                 .select("protein_g")\
                 .eq("user_id", user["id"])\
-                .gte("logged_at", today)\
+                .gte("logged_at", today + "T00:00:00-05:00")\
+                .lte("logged_at", today + "T23:59:59-05:00")\
                 .execute()
 
             protein_eaten = sum(float(m.get("protein_g") or 0) for m in meals.data)
@@ -141,11 +148,12 @@ async def check_protein_evening(app):
         users = await get_user_info()
 
         for user in users:
-            today = date.today().isoformat()
+            today = get_today_bogota()
             meals = supabase.table("meals")\
                 .select("protein_g")\
                 .eq("user_id", user["id"])\
-                .gte("logged_at", today)\
+                .gte("logged_at", today + "T00:00:00-05:00")\
+                .lte("logged_at", today + "T23:59:59-05:00")\
                 .execute()
 
             protein_eaten = sum(float(m.get("protein_g") or 0) for m in meals.data)
@@ -171,20 +179,16 @@ async def daily_summary(app):
         from bot.db.client import supabase
         from bot.utils.config import ANTHROPIC_API_KEY
         import anthropic
-        from datetime import datetime
-        import pytz
 
-        bogota_tz = pytz.timezone("America/Bogota")
-        today = datetime.now(bogota_tz).strftime("%Y-%m-%d")
-
+        today = get_today_bogota()
         users = await get_user_info()
 
         for user in users:
             meals = supabase.table("meals")\
                 .select("calories, protein_g, carbs_g, fat_g, meal_type")\
                 .eq("user_id", user["id"])\
-                .gte("logged_at", today)\
-                .lt("logged_at", today + "T23:59:59-05:00")\
+                .gte("logged_at", today + "T00:00:00-05:00")\
+                .lte("logged_at", today + "T23:59:59-05:00")\
                 .execute()
 
             workouts = supabase.table("workouts")\
@@ -193,7 +197,6 @@ async def daily_summary(app):
                 .eq("workout_date", today)\
                 .execute()
 
-            # Medición más reciente
             last_measurement = supabase.table("body_measurements")\
                 .select("weight_kg, body_fat_pct")\
                 .eq("user_id", user["id"])\
@@ -222,9 +225,7 @@ async def daily_summary(app):
             else:
                 workout_text = "- Sin entrenamientos registrados hoy\n"
 
-            # Generar feedback con Claude
             claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
             prompt = f"""Andrés tuvo este día:
 - Calorías consumidas: {total_calories} / {calorie_goal} kcal
 - Proteína: {total_protein:.0f}g / {protein_goal}g ({protein_pct}%)
@@ -235,7 +236,7 @@ async def daily_summary(app):
 - Peso actual: {current_weight} kg (objetivo: 85 kg)
 - % Grasa actual: {current_bf}% (objetivo: menos de 20%)
 
-Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa para que llegue a su objetivo de 85kg y menos de 20% de grasa. Sin asteriscos ni markdown. Tono directo y personal."""
+Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa. Sin asteriscos ni markdown. Tono directo y personal."""
 
             feedback_response = claude.messages.create(
                 model="claude-sonnet-4-20250514",
@@ -266,6 +267,7 @@ Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede m
     except Exception as e:
         logger.error(f"Error resumen diario: {e}")
 
+
 async def sync_garmin_auto(app):
     try:
         from bot.db.client import supabase
@@ -288,27 +290,25 @@ async def sync_garmin_auto(app):
 
     except Exception as e:
         logger.error(f"Error sync Garmin automático: {e}")
+
+
 async def weekend_message(app):
     try:
         from bot.db.client import supabase
-        from datetime import datetime, timedelta
-        import pytz
 
-        bogota_tz = pytz.timezone("America/Bogota")
-        today = datetime.now(bogota_tz).strftime("%Y-%m-%d")
-        week_ago = (datetime.now(bogota_tz) - timedelta(days=5)).strftime("%Y-%m-%d")
+        today = get_today_bogota()
+        week_ago = (datetime.now(BOGOTA_TZ) - timedelta(days=5)).strftime("%Y-%m-%d")
 
         users = await get_user_info()
 
         for user in users:
-            # Calorías y proteína de la semana
             meals = supabase.table("meals")\
                 .select("calories, protein_g")\
                 .eq("user_id", user["id"])\
-                .gte("logged_at", week_ago)\
+                .gte("logged_at", week_ago + "T00:00:00-05:00")\
+                .lte("logged_at", today + "T23:59:59-05:00")\
                 .execute()
 
-            # Entrenamientos de la semana
             workouts = supabase.table("workouts")\
                 .select("calories_burned, workout_date")\
                 .eq("user_id", user["id"])\
@@ -325,7 +325,6 @@ async def weekend_message(app):
             calorie_deficit = calorie_goal_week - total_calories + total_burned
             protein_pct = round((total_protein / protein_goal_week) * 100) if protein_goal_week else 0
 
-            # Decidir qué permitido sugerir según la semana
             if calorie_deficit > 1500 and protein_pct >= 80 and workout_count >= 3:
                 permitido = "una hamburguesa con papas o una pizza — la tuviste ganada esta semana"
                 nivel = "🟢 Semana excelente"
@@ -347,23 +346,21 @@ async def weekend_message(app):
                 f"- Proteína: {protein_pct}% del objetivo\n"
                 f"- Déficit calórico acumulado: {calorie_deficit:.0f} kcal\n\n"
                 f"Tu permitido de fin de semana: {permitido}\n\n"
-                f"Si comés el permitido mandame foto y lo registro para que no perdamos el control. "
-                f"El lunes retomamos con todo 💪"
+                f"Si comés el permitido mandame foto y lo registro. El lunes retomamos 💪"
             )
 
             await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
 
     except Exception as e:
         logger.error(f"Error mensaje fin de semana: {e}")
+
+
 async def check_anthropic_usage(app):
     try:
         import httpx
         from bot.utils.config import ANTHROPIC_API_KEY
-        from datetime import datetime
-        import pytz
 
-        bogota_tz = pytz.timezone("America/Bogota")
-        now = datetime.now(bogota_tz)
+        now = datetime.now(BOGOTA_TZ)
         year = now.year
         month = now.month
 
@@ -393,7 +390,6 @@ async def check_anthropic_usage(app):
                             f"⚠️ Alerta de tokens Anthropic\n\n"
                             f"Gastaste ${total_cost:.2f} de ${limit:.2f} este mes ({pct:.0f}%)\n"
                             f"Te quedan ${limit - total_cost:.2f}\n\n"
-                            f"Si seguís al mismo ritmo podrías quedarte sin saldo antes de fin de mes. "
                             f"Revisá en console.anthropic.com"
                         )
                     )
