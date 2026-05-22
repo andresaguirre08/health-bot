@@ -119,7 +119,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         from bot.db.meals import get_or_create_user
         from bot.utils.context_builder import build_user_context
-        from bot.agents.coach import chat_with_coach
+        from bot.agents.coach import process_message
         from groq import Groq
 
         user_id = await get_or_create_user(telegram_id, name)
