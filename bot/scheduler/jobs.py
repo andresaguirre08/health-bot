@@ -10,57 +10,57 @@ scheduler = AsyncIOScheduler(timezone="America/Bogota")
 
 def start_scheduler(app):
     scheduler.add_job(
-        remind_vitamins,
-        CronTrigger(hour=8, minute=0),
-        args=[app],
-        id="vitamins",
-        replace_existing=True
+    remind_vitamins,
+    CronTrigger(hour=8, minute=0, timezone="America/Bogota"),
+    args=[app],
+    id="vitamins",
+    replace_existing=True
     )
     scheduler.add_job(
-        remind_creatine,
-        CronTrigger(hour=12, minute=0),
-        args=[app],
-        id="creatine",
-        replace_existing=True
+    remind_creatine,
+    CronTrigger(hour=12, minute=0, timezone="America/Bogota"),
+    args=[app],
+    id="creatine",
+    replace_existing=True
     )
     scheduler.add_job(
-        check_protein_midday,
-        CronTrigger(hour=14, minute=0),
-        args=[app],
-        id="protein_midday",
-        replace_existing=True
+    check_protein_midday,
+    CronTrigger(hour=14, minute=0, timezone="America/Bogota"),
+    args=[app],
+    id="protein_midday",
+    replace_existing=True
     )
     scheduler.add_job(
-        check_protein_evening,
-        CronTrigger(hour=19, minute=0),
-        args=[app],
-        id="protein_evening",
-        replace_existing=True
+    check_protein_evening,
+    CronTrigger(hour=19, minute=0, timezone="America/Bogota"),
+    args=[app],
+    id="protein_evening",
+    replace_existing=True
     )
     scheduler.add_job(
-        daily_summary,
-        CronTrigger(hour=23, minute=30),
-        args=[app],
-        id="daily_summary",
-        replace_existing=True
+    daily_summary,
+    CronTrigger(hour=23, minute=30, timezone="America/Bogota"),
+    args=[app],
+    id="daily_summary",
+    replace_existing=True
     )
     scheduler.add_job(
-        sync_garmin_auto,
-        CronTrigger(hour=23, minute=0),
-        args=[app],
-        id="garmin_sync",
-        replace_existing=True
+    sync_garmin_auto,
+    CronTrigger(hour=23, minute=0, timezone="America/Bogota"),
+    args=[app],
+    id="garmin_sync",
+    replace_existing=True
     )
     scheduler.add_job(
     weekend_message,
-    CronTrigger(day_of_week="fri", hour=18, minute=0),
+    CronTrigger(day_of_week="fri", hour=18, minute=0, timezone="America/Bogota"),
     args=[app],
     id="weekend_message",
     replace_existing=True
     )
     scheduler.add_job(
     check_anthropic_usage,
-    CronTrigger(hour=9, minute=0),
+    CronTrigger(hour=9, minute=0, timezone="America/Bogota"),
     args=[app],
     id="check_anthropic_usage",
     replace_existing=True
