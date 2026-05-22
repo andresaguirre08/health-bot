@@ -13,11 +13,11 @@ def get_meal_type_by_hour() -> str:
         return "media_manana"
     elif 12 <= hour < 15:
         return "almuerzo"
-    elif 15 <= hour < 17:
+    elif 15 <= hour < 19:
         return "media_tarde"
-    elif 17 <= hour < 20:
+    elif 19 <= hour < 23:
         return "cena"
-    elif 20 <= hour < 23:
+    elif 23 <= hour <= 23:
         return "merienda_nocturna"
     else:
         return "madrugada"
@@ -38,7 +38,7 @@ MEAL_CALORIE_RANGES = {
     "desayuno": (200, 600),
     "media_manana": (100, 300),
     "almuerzo": (400, 900),
-    "media_tarde": (100, 300),
+    "media_tarde": (100, 400),
     "cena": (300, 700),
     "merienda_nocturna": (100, 300),
     "madrugada": (0, 200)
