@@ -98,7 +98,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = await get_or_create_user(telegram_id, name)
         user_context = await build_user_context(user_id)
 
-        result = await chat_with_coach(update.message.text, user_context)
+        result = await chat_with_coach(update.message.text, user_context, user_id)
 
         await update.message.reply_text(result["text"])
 
@@ -136,7 +136,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         audio_text = transcription.text
-        result = await chat_with_coach(audio_text, user_context)
+        result = await chat_with_coach(audio_text, user_context, user_id)
 
         await update.message.reply_text(
             f"🎙 Escuché: {audio_text}\n\n{result['text']}"
