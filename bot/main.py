@@ -34,10 +34,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Hola {user.first_name} 💪\n\n"
         f"Soy tu agente personal de nutrición y entrenamiento.\n\n"
         f"Podés:\n"
-        f"📷 Enviarme una foto de tu comida para calcular macros\n"
+        f"📷 Enviarme una foto de tu comida\n"
         f"🎙 Mandarme un audio con lo que comiste\n"
-        f"💬 Preguntarme cualquier cosa sobre tu dieta o entreno\n"
-        f"⌨️ Comandos disponibles:\n"
+        f"💬 Describir tu comida por texto\n"
+        f"❓ Preguntarme cualquier cosa sobre tu dieta o entreno\n\n"
+        f"Comandos:\n"
         f"  /hoy — resumen del día\n"
         f"  /progreso — composición corporal\n"
         f"  /peso — registrar peso y medidas\n"
@@ -52,63 +53,47 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if handled:
         return
 
-    # Confirmar guardado de comida
-    if context.user_data.get("waiting_meal_confirm"):
-        if update.message.text.upper().strip() == "SI":
-            try:
-                from bot.db.meals import get_or_create_user, save_meal, get_meal_type_by_hour, check_unusual_calories, MEAL_TYPE_LABELS
-                meal = context.user_data["pending_meal"]
-                user_id = context.user_data["pending_user_id"]
-                await save_meal(
-                    user_id=user_id,
-                    calories=meal.get("calories", 0),
-                    protein=meal.get("protein_g", 0),
-                    carbs=meal.get("carbs_g", 0),
-                    fat=meal.get("fat_g", 0),
-                    description=meal.get("description", ""),
-                    raw_response=meal.get("description", "")
-                )
-                context.user_data["waiting_meal_confirm"] = False
-                context.user_data["pending_meal"] = None
-
-                meal_type = get_meal_type_by_hour()
-                label = MEAL_TYPE_LABELS.get(meal_type, meal_type)
-                await update.message.reply_text(f"✅ {label} guardado en tu registro.")
-
-                alert = check_unusual_calories(meal_type, meal.get("calories", 0))
-                if alert:
-                    await update.message.reply_text(alert)
-
-            except Exception as e:
-                await update.message.reply_text(f"❌ Error guardando: {str(e)}")
-        else:
-            context.user_data["waiting_meal_confirm"] = False
-            context.user_data["pending_meal"] = None
-            await update.message.reply_text("Ok, no guardé nada.")
-        return
-
     try:
         telegram_id = update.effective_user.id
         name = update.effective_user.first_name
 
-        from bot.db.meals import get_or_create_user
+        from bot.db.meals import get_or_create_user, save_meal, get_meal_type_by_hour, MEAL_TYPE_LABELS
         from bot.utils.context_builder import build_user_context
-        from bot.agents.coach import chat_with_coach
+        from bot.agents.coach import process_message
 
         user_id = await get_or_create_user(telegram_id, name)
         user_context = await build_user_context(user_id)
 
-        result = await chat_with_coach(update.message.text, user_context, user_id)
+        result = await process_message(update.message.text, user_context, user_id)
 
-        await update.message.reply_text(result["text"])
+        if result["type"] == "food" and result["meal_data"]:
+            meal = result["meal_data"]
+            meal_type = get_meal_type_by_hour()
+            label = MEAL_TYPE_LABELS.get(meal_type, meal_type)
 
-        if result["meal_data"]:
-            context.user_data["waiting_meal_confirm"] = True
-            context.user_data["pending_meal"] = result["meal_data"]
-            context.user_data["pending_user_id"] = user_id
+            await save_meal(
+                user_id=user_id,
+                calories=meal.get("calories", 0),
+                protein=meal.get("protein_g", 0),
+                carbs=meal.get("carbs_g", 0),
+                fat=meal.get("fat_g", 0),
+                description=meal.get("description", ""),
+                raw_response=meal.get("description", "")
+            )
+
+            await update.message.reply_text(
+                f"✅ {label} guardado\n\n"
+                f"🔥 Calorías: {meal.get('calories')} kcal\n"
+                f"💪 Proteína: {meal.get('protein_g')}g\n"
+                f"🍚 Carbohidratos: {meal.get('carbs_g')}g\n"
+                f"🥑 Grasas: {meal.get('fat_g')}g"
+            )
+        else:
+            await update.message.reply_text(result["text"])
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎙 Escuchando... ⏳")
@@ -117,7 +102,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         telegram_id = update.effective_user.id
         name = update.effective_user.first_name
 
-        from bot.db.meals import get_or_create_user
+        from bot.db.meals import get_or_create_user, save_meal, get_meal_type_by_hour, MEAL_TYPE_LABELS
         from bot.utils.context_builder import build_user_context
         from bot.agents.coach import process_message
         from groq import Groq
@@ -136,16 +121,35 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         audio_text = transcription.text
-        result = await chat_with_coach(audio_text, user_context, user_id)
+        result = await process_message(audio_text, user_context, user_id)
 
-        await update.message.reply_text(
-            f"🎙 Escuché: {audio_text}\n\n{result['text']}"
-        )
+        if result["type"] == "food" and result["meal_data"]:
+            meal = result["meal_data"]
+            meal_type = get_meal_type_by_hour()
+            label = MEAL_TYPE_LABELS.get(meal_type, meal_type)
 
-        if result["meal_data"]:
-            context.user_data["waiting_meal_confirm"] = True
-            context.user_data["pending_meal"] = result["meal_data"]
-            context.user_data["pending_user_id"] = user_id
+            await save_meal(
+                user_id=user_id,
+                calories=meal.get("calories", 0),
+                protein=meal.get("protein_g", 0),
+                carbs=meal.get("carbs_g", 0),
+                fat=meal.get("fat_g", 0),
+                description=meal.get("description", ""),
+                raw_response=meal.get("description", "")
+            )
+
+            await update.message.reply_text(
+                f"🎙 Escuché: {audio_text}\n\n"
+                f"✅ {label} guardado\n\n"
+                f"🔥 Calorías: {meal.get('calories')} kcal\n"
+                f"💪 Proteína: {meal.get('protein_g')}g\n"
+                f"🍚 Carbohidratos: {meal.get('carbs_g')}g\n"
+                f"🥑 Grasas: {meal.get('fat_g')}g"
+            )
+        else:
+            await update.message.reply_text(
+                f"🎙 Escuché: {audio_text}\n\n{result['text']}"
+            )
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
