@@ -32,7 +32,7 @@ async def sync_weight(user_id: str, target_date: str = None):
         stats = data["totalAverage"]
         weight = stats.get("weight")
         if weight:
-            weight = weight / 1000  # Garmin devuelve en gramos
+            weight = weight / 1000
 
         bf_pct = stats.get("bodyFat")
         muscle_mass = stats.get("muscleMass")
@@ -42,7 +42,19 @@ async def sync_weight(user_id: str, target_date: str = None):
         if not weight:
             return None
 
-        # Verificar si ya existe medición del día
+        # Obtener peso anterior para comparar
+        previous = supabase.table("body_measurements")\
+            .select("weight_kg, measured_at")\
+            .eq("user_id", user_id)\
+            .lt("measured_at", target_date)\
+            .order("measured_at", desc=True)\
+            .limit(1)\
+            .execute()
+
+        previous_weight = None
+        if previous.data:
+            previous_weight = previous.data[0].get("weight_kg")
+
         existing = supabase.table("body_measurements")\
             .select("id")\
             .eq("user_id", user_id)\
@@ -69,6 +81,7 @@ async def sync_weight(user_id: str, target_date: str = None):
                 .insert(measurement)\
                 .execute()
 
+        measurement["previous_weight"] = previous_weight
         return measurement
 
     except Exception as e:

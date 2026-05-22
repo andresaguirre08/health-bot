@@ -184,6 +184,50 @@ async def handle_measurement(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["waiting_for_measurement"] = False
         await update.message.reply_text(f"❌ Error al guardar: {str(e)}")
         return True
+async def analyze_weight_change(user_id: str, diff: float, current_weight: float) -> str:
+    from datetime import datetime, timedelta
+    import pytz
+
+    bogota_tz = pytz.timezone("America/Bogota")
+    today = datetime.now(bogota_tz).strftime("%Y-%m-%d")
+    three_days_ago = (datetime.now(bogota_tz) - timedelta(days=3)).strftime("%Y-%m-%d")
+
+    # Calorías promedio últimos 3 días
+    meals = supabase.table("meals")\
+        .select("calories, logged_at")\
+        .eq("user_id", user_id)\
+        .gte("logged_at", three_days_ago)\
+        .execute()
+
+    # Entrenamientos últimos 3 días
+    workouts = supabase.table("workouts")\
+        .select("calories_burned, workout_date")\
+        .eq("user_id", user_id)\
+        .gte("workout_date", three_days_ago)\
+        .execute()
+
+    total_calories = sum(m.get("calories") or 0 for m in meals.data)
+    total_burned = sum(w.get("calories_burned") or 0 for w in workouts.data)
+    avg_daily_calories = total_calories / 3 if meals.data else 0
+    avg_daily_burned = total_burned / 3 if workouts.data else 0
+    net_avg = avg_daily_calories - avg_daily_burned
+
+    # Lógica de análisis sin tokens
+    if diff > 0:
+        if diff <= 0.5:
+            return "Subida menor a 0.5kg — variación normal por agua, sal o digestión. No es grasa real."
+        elif diff > 0.5 and net_avg > 2200:
+            return f"Subiste {diff}kg. Promedio de {avg_daily_calories:.0f} kcal/día los últimos 3 días con {avg_daily_burned:.0f} kcal quemadas. El exceso calórico explica la subida. Bajá las porciones de carbohidratos."
+        elif diff > 0.5 and net_avg <= 2200:
+            return f"Subiste {diff}kg pero estuviste en déficit calórico ({net_avg:.0f} kcal netas/día). Probable retención de agua — puede ser por sodio alto, poco sueño o estrés. No es grasa."
+        else:
+            return f"Subiste {diff}kg. Revisá el sodio de lo que comiste ayer — embutidos, enlatados y salsas retienen agua."
+    elif diff < 0:
+        if abs(diff) <= 0.5:
+            return f"Bajaste {abs(diff)}kg — buen progreso. Seguí así."
+        else:
+            return f"Bajaste {abs(diff)}kg en un día — excelente. Vas camino a los 85kg."
+    return ""
 
 
 async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -197,33 +241,45 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from bot.integrations.garmin import sync_all
         results = await sync_all(user_id)
 
-        msg = "✅ *Sincronización Garmin completada*\n\n"
+        msg = "✅ Sincronización Garmin completada\n\n"
 
         if results["weight"]:
             w = results["weight"]
-            msg += "⚖️ *Peso registrado:*\n"
-            msg += f"- Peso: {w.get('weight_kg')} kg\n"
-            if w.get('body_fat_pct'):
+            current_weight = w.get("weight_kg")
+            previous_weight = w.get("previous_weight")
+
+            msg += "⚖️ Peso registrado:\n"
+            msg += f"- Peso: {current_weight} kg\n"
+            if w.get("body_fat_pct"):
                 msg += f"- % Grasa: {w.get('body_fat_pct')}%\n"
-            if w.get('muscle_mass_kg'):
+            if w.get("muscle_mass_kg"):
                 msg += f"- Masa muscular: {w.get('muscle_mass_kg')} kg\n"
+
+            # Análisis de cambio de peso
+            if previous_weight and current_weight:
+                diff = round(current_weight - previous_weight, 2)
+                if diff != 0:
+                    msg += f"\n{'📈' if diff > 0 else '📉'} Cambio vs ayer: {diff:+.2f} kg\n"
+                    analysis = await analyze_weight_change(user_id, diff, current_weight)
+                    if analysis:
+                        msg += f"\n{analysis}"
         else:
             msg += "⚖️ Sin datos de peso para hoy\n"
 
         if results["workouts"]:
-            msg += f"\n🏋 *Entrenamientos descargados: {len(results['workouts'])}*\n"
+            msg += f"\n🏋 Entrenamientos descargados: {len(results['workouts'])}\n"
             for w in results["workouts"]:
                 msg += f"- {w.get('activity_type')}: {w.get('duration_min')} min"
-                if w.get('calories_burned'):
+                if w.get("calories_burned"):
                     msg += f" — {w.get('calories_burned')} kcal"
                 msg += "\n"
         else:
-            msg += "\n🏋 Sin entrenamientos nuevos para hoy\n"
+            msg += "\n🏋 Sin entrenamientos nuevos\n"
 
         if results["errors"]:
             msg += f"\n⚠️ Errores: {', '.join(results['errors'])}"
 
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.message.reply_text(msg)
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
