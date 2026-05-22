@@ -56,7 +56,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("waiting_meal_confirm"):
         if update.message.text.upper().strip() == "SI":
             try:
-                from bot.db.meals import get_or_create_user, save_meal
+                from bot.db.meals import get_or_create_user, save_meal, get_meal_type_by_hour, check_unusual_calories, MEAL_TYPE_LABELS
                 meal = context.user_data["pending_meal"]
                 user_id = context.user_data["pending_user_id"]
                 await save_meal(
@@ -70,7 +70,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 context.user_data["waiting_meal_confirm"] = False
                 context.user_data["pending_meal"] = None
-                await update.message.reply_text("✅ Comida guardada en tu registro.")
+
+                meal_type = get_meal_type_by_hour()
+                label = MEAL_TYPE_LABELS.get(meal_type, meal_type)
+                await update.message.reply_text(f"✅ {label} guardado en tu registro.")
+
+                alert = check_unusual_calories(meal_type, meal.get("calories", 0))
+                if alert:
+                    await update.message.reply_text(alert)
+
             except Exception as e:
                 await update.message.reply_text(f"❌ Error guardando: {str(e)}")
         else:
@@ -101,7 +109,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
-
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎙 Escuchando... ⏳")
