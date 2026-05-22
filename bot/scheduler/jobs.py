@@ -51,6 +51,13 @@ def start_scheduler(app):
         id="garmin_sync",
         replace_existing=True
     )
+    scheduler.add_job(
+    weekend_message,
+    CronTrigger(day_of_week="fri", hour=18, minute=0),
+    args=[app],
+    id="weekend_message",
+    replace_existing=True
+    )
 
     scheduler.start()
     logger.info("Scheduler iniciado con zona horaria America/Bogota")
@@ -274,3 +281,70 @@ async def sync_garmin_auto(app):
 
     except Exception as e:
         logger.error(f"Error sync Garmin automático: {e}")
+async def weekend_message(app):
+    try:
+        from bot.db.client import supabase
+        from datetime import datetime, timedelta
+        import pytz
+
+        bogota_tz = pytz.timezone("America/Bogota")
+        today = datetime.now(bogota_tz).strftime("%Y-%m-%d")
+        week_ago = (datetime.now(bogota_tz) - timedelta(days=5)).strftime("%Y-%m-%d")
+
+        users = await get_user_info()
+
+        for user in users:
+            # Calorías y proteína de la semana
+            meals = supabase.table("meals")\
+                .select("calories, protein_g")\
+                .eq("user_id", user["id"])\
+                .gte("logged_at", week_ago)\
+                .execute()
+
+            # Entrenamientos de la semana
+            workouts = supabase.table("workouts")\
+                .select("calories_burned, workout_date")\
+                .eq("user_id", user["id"])\
+                .gte("workout_date", week_ago)\
+                .execute()
+
+            total_calories = sum(m.get("calories") or 0 for m in meals.data)
+            total_protein = sum(float(m.get("protein_g") or 0) for m in meals.data)
+            total_burned = sum(w.get("calories_burned") or 0 for w in workouts.data)
+            workout_count = len(workouts.data)
+
+            calorie_goal_week = user.get("daily_calories", 2000) * 5
+            protein_goal_week = user.get("daily_protein_g", 180) * 5
+            calorie_deficit = calorie_goal_week - total_calories + total_burned
+            protein_pct = round((total_protein / protein_goal_week) * 100) if protein_goal_week else 0
+
+            # Decidir qué permitido sugerir según la semana
+            if calorie_deficit > 1500 and protein_pct >= 80 and workout_count >= 3:
+                permitido = "una hamburguesa con papas o una pizza — la tuviste ganada esta semana"
+                nivel = "🟢 Semana excelente"
+            elif calorie_deficit > 500 and protein_pct >= 60 and workout_count >= 2:
+                permitido = "una pizza o hamburguesa, pero controlá el tamaño — una porción, no dos"
+                nivel = "🟡 Semana buena"
+            elif workout_count >= 2 and protein_pct >= 50:
+                permitido = "algo rico pero moderado — un helado, unas empanadas o una comida libre sin excederte"
+                nivel = "🟡 Semana regular"
+            else:
+                permitido = "algo pequeño si querés, pero esta semana estuvo floja — la próxima semana empezá fuerte el lunes"
+                nivel = "🔴 Semana difícil"
+
+            msg = (
+                f"🎉 Es viernes, Andrés!\n\n"
+                f"{nivel}\n"
+                f"Resumen de la semana:\n"
+                f"- Entrenamientos: {workout_count}\n"
+                f"- Proteína: {protein_pct}% del objetivo\n"
+                f"- Déficit calórico acumulado: {calorie_deficit:.0f} kcal\n\n"
+                f"Tu permitido de fin de semana: {permitido}\n\n"
+                f"Si comés el permitido mandame foto y lo registro para que no perdamos el control. "
+                f"El lunes retomamos con todo 💪"
+            )
+
+            await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
+
+    except Exception as e:
+        logger.error(f"Error mensaje fin de semana: {e}")
