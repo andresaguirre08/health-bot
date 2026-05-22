@@ -58,6 +58,13 @@ def start_scheduler(app):
     id="weekend_message",
     replace_existing=True
     )
+    scheduler.add_job(
+    check_anthropic_usage,
+    CronTrigger(hour=9, minute=0),
+    args=[app],
+    id="check_anthropic_usage",
+    replace_existing=True
+    )
 
     scheduler.start()
     logger.info("Scheduler iniciado con zona horaria America/Bogota")
@@ -348,3 +355,48 @@ async def weekend_message(app):
 
     except Exception as e:
         logger.error(f"Error mensaje fin de semana: {e}")
+async def check_anthropic_usage(app):
+    try:
+        import httpx
+        from bot.utils.config import ANTHROPIC_API_KEY
+        from datetime import datetime
+        import pytz
+
+        bogota_tz = pytz.timezone("America/Bogota")
+        now = datetime.now(bogota_tz)
+        year = now.year
+        month = now.month
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://api.anthropic.com/v1/usage?year={year}&month={month}",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01"
+                }
+            )
+
+            if response.status_code != 200:
+                return
+
+            data = response.json()
+            total_cost = data.get("total_cost_usd", 0)
+            limit = 5.0
+            pct = (total_cost / limit) * 100
+
+            if pct >= 70:
+                users = await get_user_info()
+                for user in users:
+                    await app.bot.send_message(
+                        chat_id=user["telegram_id"],
+                        text=(
+                            f"⚠️ Alerta de tokens Anthropic\n\n"
+                            f"Gastaste ${total_cost:.2f} de ${limit:.2f} este mes ({pct:.0f}%)\n"
+                            f"Te quedan ${limit - total_cost:.2f}\n\n"
+                            f"Si seguís al mismo ritmo podrías quedarte sin saldo antes de fin de mes. "
+                            f"Revisá en console.anthropic.com"
+                        )
+                    )
+
+    except Exception as e:
+        logger.error(f"Error chequeando uso Anthropic: {e}")
