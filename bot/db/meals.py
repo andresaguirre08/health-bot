@@ -42,19 +42,24 @@ async def save_meal(user_id: str, calories: float, protein: float,
 
 
 async def get_today_totals(user_id: str) -> dict:
-    today = date.today().isoformat()
+    from datetime import datetime
+    import pytz
+    
+    bogota_tz = pytz.timezone("America/Bogota")
+    today = datetime.now(bogota_tz).strftime("%Y-%m-%d")
+    
+    result = supabase.table("meals")\
+        .select("calories, protein_g, carbs_g, fat_g")\
+        .eq("user_id", user_id)\
+        .gte("logged_at", today)\
+        .lt("logged_at", today + "T23:59:59-05:00")\
+        .execute()
 
-    result = supabase.table("meals").select(
-        "calories, protein_g, carbs_g, fat_g"
-    ).eq("user_id", user_id).gte("logged_at", today).execute()
-
-    totals = {"calories": 0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "meal_count": 0}
-
+    totals = {"calories": 0, "protein": 0.0, "carbs": 0.0, "fat": 0.0}
     for meal in result.data:
         totals["calories"] += meal.get("calories") or 0
         totals["protein"] += float(meal.get("protein_g") or 0)
         totals["carbs"] += float(meal.get("carbs_g") or 0)
         totals["fat"] += float(meal.get("fat_g") or 0)
-        totals["meal_count"] += 1
 
     return totals

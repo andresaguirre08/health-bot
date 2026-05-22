@@ -1,12 +1,18 @@
-from datetime import date, timedelta
+from datetime import datetime, timedelta
+import pytz
 from bot.db.client import supabase
+
+BOGOTA_TZ = pytz.timezone("America/Bogota")
+
+
+def get_today_bogota():
+    return datetime.now(BOGOTA_TZ).strftime("%Y-%m-%d")
 
 
 async def build_user_context(user_id: str) -> str:
-    today = date.today()
-    week_ago = (today - timedelta(days=7)).isoformat()
-    month_ago = (today - timedelta(days=30)).isoformat()
-    today_str = today.isoformat()
+    today = get_today_bogota()
+    week_ago = (datetime.now(BOGOTA_TZ) - timedelta(days=7)).strftime("%Y-%m-%d")
+    month_ago = (datetime.now(BOGOTA_TZ) - timedelta(days=30)).strftime("%Y-%m-%d")
 
     # Perfil del usuario
     user = supabase.table("users").select("*").eq("id", user_id).execute()
@@ -35,7 +41,8 @@ async def build_user_context(user_id: str) -> str:
     today_meals = supabase.table("meals")\
         .select("calories, protein_g, carbs_g, fat_g, description, logged_at")\
         .eq("user_id", user_id)\
-        .gte("logged_at", today_str)\
+        .gte("logged_at", today)\
+        .lt("logged_at", today + "T23:59:59-05:00")\
         .execute()
 
     # Promedio nutricional últimos 7 días
@@ -123,7 +130,7 @@ OBJETIVOS DIARIOS:
 - Carbohidratos: {u.get('daily_carbs_g')} g
 - Grasas: {u.get('daily_fat_g')} g
 
-HOY ({today_str}):
+HOY ({today}):
 - Comidas registradas: {today_meal_count}
 - Calorías consumidas: {today_calories} / {u.get('daily_calories')} kcal
 - Proteína consumida: {today_protein:.1f}g / {u.get('daily_protein_g')}g ({protein_pct}%)
@@ -146,11 +153,12 @@ PROMEDIOS ÚLTIMOS 7 DÍAS:
 
 
 async def get_today_totals(user_id: str) -> dict:
-    today = date.today().isoformat()
+    today = get_today_bogota()
     result = supabase.table("meals")\
         .select("calories, protein_g, carbs_g, fat_g")\
         .eq("user_id", user_id)\
         .gte("logged_at", today)\
+        .lt("logged_at", today + "T23:59:59-05:00")\
         .execute()
 
     totals = {"calories": 0, "protein": 0.0, "carbs": 0.0, "fat": 0.0}

@@ -1,8 +1,15 @@
-from datetime import date
+from datetime import datetime
+import pytz
 from telegram import Update
 from telegram.ext import ContextTypes
 from bot.db.meals import get_or_create_user, get_today_totals
 from bot.db.client import supabase
+
+BOGOTA_TZ = pytz.timezone("America/Bogota")
+
+
+def get_today_bogota():
+    return datetime.now(BOGOTA_TZ).strftime("%Y-%m-%d")
 
 
 async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -16,7 +23,7 @@ async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = supabase.table("users").select("*").eq("id", user_id).execute()
         u = user.data[0]
 
-        today = date.today().isoformat()
+        today = get_today_bogota()
         workouts = supabase.table("workouts")\
             .select("activity_type, duration_min, calories_burned")\
             .eq("user_id", user_id)\
@@ -86,7 +93,7 @@ async def cmd_progreso(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         latest = measurements.data[0]
-        msg = f"📈 *Tu progreso*\n\n"
+        msg = "📈 *Tu progreso*\n\n"
         msg += f"*Última medición ({latest.get('measured_at')}):*\n"
         msg += f"- ⚖️ Peso: {latest.get('weight_kg')} kg\n"
         msg += f"- 📊 % Grasa: {latest.get('body_fat_pct')}%\n"
@@ -149,7 +156,7 @@ async def handle_measurement(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         measurement = {
             "user_id": user_id,
-            "measured_at": date.today().isoformat(),
+            "measured_at": get_today_bogota(),
             "weight_kg": weight,
             "waist_cm": waist,
             "body_fat_pct": bf_pct,
@@ -160,7 +167,7 @@ async def handle_measurement(update: Update, context: ContextTypes.DEFAULT_TYPE)
         supabase.table("body_measurements").insert(measurement).execute()
         context.user_data["waiting_for_measurement"] = False
 
-        msg = f"✅ *Medición registrada*\n\n"
+        msg = "✅ *Medición registrada*\n\n"
         if weight:
             msg += f"- ⚖️ Peso: {weight} kg\n"
         if waist:
@@ -194,7 +201,7 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if results["weight"]:
             w = results["weight"]
-            msg += f"⚖️ *Peso registrado:*\n"
+            msg += "⚖️ *Peso registrado:*\n"
             msg += f"- Peso: {w.get('weight_kg')} kg\n"
             if w.get('body_fat_pct'):
                 msg += f"- % Grasa: {w.get('body_fat_pct')}%\n"
@@ -221,6 +228,7 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
+
 async def cmd_polar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         telegram_id = update.effective_user.id
@@ -229,23 +237,21 @@ async def cmd_polar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         from bot.integrations.polar import get_auth_url, get_polar_token
 
-        # Verificar si ya tiene token
         token = await get_polar_token(user_id)
         if token:
             await update.message.reply_text(
                 "✅ Polar ya está conectado.\n"
-                "Usá /sync\\_polar para sincronizar entrenamientos.",
+                "Usá /sync_polar para sincronizar entrenamientos."
             )
             return
 
         auth_url = get_auth_url(user_id)
         await update.message.reply_text(
-            f"🔗 *Conectar Polar Flow*\n\n"
+            f"🔗 Conectar Polar Flow\n\n"
             f"1. Abrí este enlace en tu navegador:\n{auth_url}\n\n"
             f"2. Autorizá el acceso\n"
             f"3. Copiá el código de la URL de callback\n"
-            f"4. Enviame el código con:\n`/polar_code TU_CODIGO`",
-            
+            f"4. Enviame el código con: /polar_code TU_CODIGO"
         )
 
     except Exception as e:
@@ -273,20 +279,16 @@ async def cmd_polar_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         token_data = await exchange_code_for_token(code)
 
         if "access_token" not in token_data:
-            await update.message.reply_text(
-                f"❌ Error obteniendo token: {token_data}"
-            )
+            await update.message.reply_text(f"❌ Error obteniendo token: {token_data}")
             return
 
         await save_polar_token(user_id, token_data)
-
         polar_user_id = str(token_data.get("x_user_id", user_id))
         await register_user_polar(token_data["access_token"], polar_user_id)
 
         await update.message.reply_text(
-            "✅ *Polar conectado exitosamente*\n\n"
-            "Ahora podés usar /sync\\_polar para sincronizar tus entrenamientos.",
-            
+            "✅ Polar conectado exitosamente\n\n"
+            "Ahora podés usar /sync_polar para sincronizar tus entrenamientos."
         )
 
     except Exception as e:
@@ -302,7 +304,7 @@ async def cmd_sync_polar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = await get_or_create_user(telegram_id, name)
 
         from bot.integrations.polar import sync_polar_workouts, sync_polar_activity
-        
+
         workouts = await sync_polar_workouts(user_id)
         activity = await sync_polar_activity(user_id)
 
@@ -321,7 +323,7 @@ async def cmd_sync_polar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += "🏋 Sin entrenamientos nuevos\n"
 
         if activity:
-            msg += f"\n📊 Actividad del día:\n"
+            msg += "\n📊 Actividad del día:\n"
             if activity.get('calories'):
                 msg += f"- Calorías totales: {activity.get('calories')} kcal\n"
             if activity.get('active_calories'):
