@@ -66,7 +66,7 @@ async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 *Proteína pendiente: {protein_remaining:.1f}g*
 {'✅ Objetivo de proteína cumplido!' if protein_remaining == 0 else f'⚡ Necesitás {protein_remaining:.1f}g más de proteína hoy'}"""
 
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.message.reply_text(msg)
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
@@ -115,7 +115,7 @@ async def cmd_progreso(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for m in measurements.data:
             msg += f"- {m.get('measured_at')}: {m.get('weight_kg')}kg | {m.get('body_fat_pct')}% grasa\n"
 
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.message.reply_text(msg)
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
@@ -130,7 +130,7 @@ async def cmd_peso(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`84.5 95 30.2 35.8`\n\n"
         "Si no tenés algún dato usá 0:\n"
         "`84.5 0 0 0`",
-        parse_mode="Markdown"
+        
     )
     context.user_data["waiting_for_measurement"] = True
 
@@ -177,7 +177,7 @@ async def handle_measurement(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if muscle:
             msg += f"- 💪 Masa muscular: {muscle} kg\n"
 
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.message.reply_text(msg)
         return True
 
     except Exception as e:
@@ -319,7 +319,7 @@ async def cmd_polar_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not context.args:
             await update.message.reply_text(
                 "Enviame el código así:\n`/polar_code TU_CODIGO`",
-                parse_mode="Markdown"
+                
             )
             return
 
