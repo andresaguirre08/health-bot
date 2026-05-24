@@ -395,3 +395,39 @@ async def cmd_sync_polar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+
+async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        telegram_id = update.effective_user.id
+        name = update.effective_user.first_name
+        user_id = await get_or_create_user(telegram_id, name)
+
+        today = get_today_bogota()
+
+        # Obtener la última comida del día
+        result = supabase.table("meals")\
+            .select("id, description, calories, protein_g, meal_type, logged_at")\
+            .eq("user_id", user_id)\
+            .gte("logged_at", today + "T00:00:00-05:00")\
+            .lte("logged_at", today + "T23:59:59-05:00")\
+            .order("logged_at", desc=True)\
+            .limit(1)\
+            .execute()
+
+        if not result.data:
+            await update.message.reply_text("No encontré comidas registradas hoy para borrar.")
+            return
+
+        meal = result.data[0]
+        context.user_data["pending_delete_id"] = meal["id"]
+
+        await update.message.reply_text(
+            f"La última comida registrada es:\n\n"
+            f"- {meal.get('description', 'sin descripción')}\n"
+            f"- {meal.get('calories')} kcal\n"
+            f"- {meal.get('protein_g')}g proteína\n\n"
+            f"¿Confirmás que querés borrarla? Respondé SI para confirmar."
+        )
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
