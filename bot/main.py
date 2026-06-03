@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -57,40 +58,70 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if handled:
         return
 
-    # Guardar marca del producto nutricional
+    # Confirmación y corrección de tabla nutricional
     if context.user_data.get("pending_nutrition"):
         from bot.agents.nutrition_scanner import save_to_food_database
         pending = context.user_data["pending_nutrition"]
-        brand_input = update.message.text.strip()
-        brand = None if brand_input.lower() == "sin marca" else brand_input
-
+        user_input = update.message.text.strip()
+        user_input_lower = user_input.lower()
         scan_result = pending["scan_result"]
         product_name = pending["product_name"]
         user_id = pending["user_id"]
 
-        context.user_data["pending_nutrition"] = None
+        if user_input_lower == "si":
+            context.user_data["pending_nutrition"] = None
+            save_result = await save_to_food_database(user_id, scan_result, product_name)
+            action = save_result["action"]
+            product = save_result["product"]
+            final_brand = save_result.get("brand")
 
-        save_result = await save_to_food_database(user_id, scan_result, product_name, brand)
-        action = save_result["action"]
-        product = save_result["product"]
-        final_brand = save_result.get("brand")
+            msg = f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
+            msg += f"📦 Producto: {product}\n"
+            if final_brand:
+                msg += f"🏷 Marca: {final_brand}\n"
+            msg += f"\nCuando me digas que comiste {product} voy a usar estos datos exactos."
+            await update.message.reply_text(msg)
+            return
 
-        msg = f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
-        msg += f"📦 Producto: {product}\n"
-        if final_brand:
-            msg += f"🏷 Marca: {final_brand}\n"
-        msg += "\n"
-        msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
-        msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
-        msg += f"💪 Proteína: {scan_result.get('protein_g')}g\n"
-        msg += f"🍚 Carbohidratos: {scan_result.get('carbs_g')}g\n"
-        msg += f"🥑 Grasas: {scan_result.get('fat_g')}g\n"
-        if scan_result.get("fiber_g"):
-            msg += f"🌾 Fibra: {scan_result.get('fiber_g')}g\n"
-        if scan_result.get("sodium_mg"):
-            msg += f"🧂 Sodio: {scan_result.get('sodium_mg')}mg\n"
-        msg += f"\nCuando me digas que comiste {product} voy a usar estos datos exactos."
-        await update.message.reply_text(msg)
+        # Intentar corregir un campo
+        corrections = {
+            "proteina": "protein_g",
+            "proteína": "protein_g",
+            "calorias": "calories_per_serving",
+            "calorías": "calories_per_serving",
+            "carbohidratos": "carbs_g",
+            "grasas": "fat_g",
+            "fibra": "fiber_g",
+            "sodio": "sodium_mg"
+        }
+
+        corrected = False
+        for keyword, field in corrections.items():
+            if keyword in user_input_lower:
+                match = re.search(r'(\d+(?:\.\d+)?)', user_input)
+                if match:
+                    scan_result[field] = float(match.group(1))
+                    pending["scan_result"] = scan_result
+                    context.user_data["pending_nutrition"] = pending
+                    corrected = True
+                    break
+
+        if corrected:
+            msg = (
+                f"✏️ Dato corregido. Datos actualizados:\n\n"
+                f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
+                f"💪 Proteína: {scan_result.get('protein_g')}g\n"
+                f"🍚 Carbohidratos: {scan_result.get('carbs_g')}g\n"
+                f"🥑 Grasas: {scan_result.get('fat_g')}g\n\n"
+                f"¿Ahora están correctos? Respondé SI para guardar o seguí corrigiendo."
+            )
+            await update.message.reply_text(msg)
+        else:
+            await update.message.reply_text(
+                "No entendí la corrección. Usá el formato:\n"
+                "proteina 11 / calorias 139 / carbohidratos 9 / grasas 5\n\n"
+                "O respondé SI para guardar los datos actuales."
+            )
         return
 
     # Confirmar borrado de comida
