@@ -462,3 +462,57 @@ async def cmd_mialimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+
+async def cmd_tabla(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        telegram_id = update.effective_user.id
+        name = update.effective_user.first_name
+        user_id = await get_or_create_user(telegram_id, name)
+
+        today = get_today_bogota()
+
+        meals = supabase.table("meals")\
+            .select("description, calories, protein_g, carbs_g, fat_g, meal_type, logged_at")\
+            .eq("user_id", user_id)\
+            .gte("logged_at", today + "T00:00:00-05:00")\
+            .lte("logged_at", today + "T23:59:59-05:00")\
+            .order("logged_at", desc=False)\
+            .execute()
+
+        if not meals.data:
+            await update.message.reply_text("No registraste comidas hoy todavía.")
+            return
+
+        from bot.db.meals import MEAL_TYPE_LABELS
+        msg = f"🗒 Comidas de hoy — {today}\n\n"
+
+        total_cal = 0
+        total_prot = 0
+        total_carbs = 0
+        total_fat = 0
+
+        for m in meals.data:
+            label = MEAL_TYPE_LABELS.get(m.get("meal_type", ""), m.get("meal_type", ""))
+            hora = m.get("logged_at", "")[11:16]
+            desc = m.get("description", "sin descripción")
+            cal = m.get("calories") or 0
+            prot = float(m.get("protein_g") or 0)
+            carbs = float(m.get("carbs_g") or 0)
+            fat = float(m.get("fat_g") or 0)
+
+            msg += f"{label} ({hora})\n"
+            msg += f"  {desc}\n"
+            msg += f"  🔥 {cal} kcal | 💪 {prot:.1f}g prot | 🍚 {carbs:.1f}g carbs | 🥑 {fat:.1f}g grasas\n\n"
+
+            total_cal += cal
+            total_prot += prot
+            total_carbs += carbs
+            total_fat += fat
+
+        msg += f"─────────────────\n"
+        msg += f"TOTAL: 🔥 {total_cal} kcal | 💪 {total_prot:.1f}g | 🍚 {total_carbs:.1f}g | 🥑 {total_fat:.1f}g"
+
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")

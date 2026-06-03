@@ -24,6 +24,19 @@ from bot.handlers.commands import (
     cmd_mialimentos,
     handle_measurement
 )
+from bot.handlers.commands import (
+    cmd_hoy,
+    cmd_progreso,
+    cmd_peso,
+    cmd_sync,
+    cmd_polar,
+    cmd_polar_code,
+    cmd_sync_polar,
+    cmd_borrar,
+    cmd_mialimentos,
+    cmd_tabla,
+    handle_measurement
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -304,6 +317,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(CommandHandler("tabla", cmd_tabla))
 
     logger.info("Bot iniciado...")
     app.run_polling(drop_pending_updates=True)
