@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import json
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -57,7 +58,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Confirmación y corrección de tabla nutricional — PRIMERO que todo
     telegram_id_check = update.effective_user.id
     from bot.db.client import supabase as supa
-    import json
+
     pending_scan = supa.table("pending_scans")\
         .select("*")\
         .eq("telegram_id", telegram_id_check)\
@@ -115,10 +116,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         break
 
         if corrected:
-            supa.table("pending_scans")\
-                .update({"scan_result": json.loads(json.dumps(scan_result))})\
-                .eq("id", pending_id)\
-                .execute()
+            # Borrar el registro viejo y crear uno nuevo con datos corregidos
+            supa.table("pending_scans").delete().eq("id", pending_id).execute()
+            supa.table("pending_scans").insert({
+                "user_id": user_id,
+                "telegram_id": telegram_id_check,
+                "scan_result": json.loads(json.dumps(scan_result)),
+                "product_name": product_name
+            }).execute()
+
             msg = (
                 f"✏️ Datos corregidos:\n\n"
                 f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
