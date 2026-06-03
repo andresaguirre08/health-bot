@@ -25,12 +25,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(photo.file_id)
         image_bytes = await file.download_as_bytearray()
 
-        # Primero detectar si es tabla nutricional
+        # Caption del mensaje tiene prioridad como nombre del producto
+        caption = update.message.caption or None
+
+        # Detectar si es tabla nutricional
         scan_result = await scan_nutrition_label(bytes(image_bytes))
 
         if scan_result.get("is_nutrition_label"):
-            # Es una etiqueta nutricional — guardar en food_database
-            save_result = await save_to_food_database(user_id, scan_result)
+            save_result = await save_to_food_database(user_id, scan_result, caption)
             action = save_result["action"]
             product = save_result["product"]
 
@@ -40,7 +42,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             if scan_result.get("brand"):
                 msg += f" — {scan_result.get('brand')}"
-            msg += f"\n\n"
+            msg += "\n\n"
             msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
             msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
             msg += f"💪 Proteína: {scan_result.get('protein_g')}g\n"
@@ -63,10 +65,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_context = await build_user_context(user_id)
         totals = await get_today_totals(user_id)
 
+        # Si hay caption, usarlo como descripción adicional para el análisis
+        extra_context = f"El usuario dice que esto es: {caption}" if caption else ""
+
         result = analyze_food_photo(
             image_bytes=bytes(image_bytes),
             mime_type="image/jpeg",
-            user_context=user_context,
+            user_context=user_context + extra_context,
             calories_eaten=totals["calories"],
             protein_eaten=totals["protein"]
         )
@@ -77,7 +82,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             protein=result["protein"],
             carbs=result["carbs"],
             fat=result["fat"],
-            description=f"foto - {label}",
+            description=caption or f"foto - {label}",
             raw_response=result["response_text"]
         )
 

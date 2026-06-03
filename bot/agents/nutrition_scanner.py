@@ -61,27 +61,39 @@ async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg"
     except:
         return {"is_nutrition_label": False}
 
+async def save_to_food_database(user_id: str, data: dict, caption: str = None) -> dict:
+    # Usar el caption del mensaje como nombre si Claude no detectó el nombre
+    product_name = data.get("product_name", "").strip()
+    if not product_name or product_name.lower() in ["producto", "producto sin nombre", ""]:
+        product_name = caption or "Producto sin nombre"
 
-async def save_to_food_database(user_id: str, data: dict) -> dict:
-    # Verificar si ya existe el producto
+    # Buscar si ya existe exactamente ese producto
     existing = supabase.table("food_database")\
         .select("id, product_name, times_used")\
         .eq("user_id", user_id)\
-        .ilike("product_name", f"%{data.get('product_name', '')}%")\
+        .ilike("product_name", product_name)\
         .execute()
 
     if existing.data:
-        # Actualizar si ya existe
         supabase.table("food_database")\
-            .update({"times_used": existing.data[0]["times_used"] + 1})\
+            .update({
+                "calories_per_serving": data.get("calories_per_serving"),
+                "protein_g": data.get("protein_g"),
+                "carbs_g": data.get("carbs_g"),
+                "fat_g": data.get("fat_g"),
+                "fiber_g": data.get("fiber_g"),
+                "sodium_mg": data.get("sodium_mg"),
+                "serving_size_g": data.get("serving_size_g"),
+                "serving_description": data.get("serving_description"),
+                "times_used": existing.data[0]["times_used"] + 1
+            })\
             .eq("id", existing.data[0]["id"])\
             .execute()
-        return {"action": "updated", "product": existing.data[0]["product_name"]}
+        return {"action": "updated", "product": product_name}
 
-    # Insertar nuevo producto
     result = supabase.table("food_database").insert({
         "user_id": user_id,
-        "product_name": data.get("product_name", "Producto sin nombre"),
+        "product_name": product_name,
         "brand": data.get("brand"),
         "serving_size_g": data.get("serving_size_g"),
         "serving_description": data.get("serving_description"),
@@ -95,8 +107,7 @@ async def save_to_food_database(user_id: str, data: dict) -> dict:
         "raw_ai_response": data
     }).execute()
 
-    return {"action": "created", "product": data.get("product_name")}
-
+    return {"action": "created", "product": product_name}
 
 async def search_food_database(user_id: str, query: str) -> list:
     result = supabase.table("food_database")\
@@ -115,4 +126,4 @@ async def get_all_products(user_id: str) -> list:
         .eq("user_id", user_id)\
         .order("times_used", desc=True)\
         .execute()
-    return result.data if result.data else []
+    return result.data if result.data else []   
