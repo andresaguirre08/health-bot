@@ -105,21 +105,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         corrected = False
-        for keyword, field in corrections.items():
-            if keyword in user_input_lower:
-                match = re.search(r'(\d+(?:\.\d+)?)', user_input)
-                if match:
-                    scan_result[field] = float(match.group(1))
-                    supa.table("pending_scans")\
-                        .update({"scan_result": scan_result})\
-                        .eq("id", pending_id)\
-                        .execute()
-                    corrected = True
-                    break
+        parts = user_input.split("/")
+        for part in parts:
+            part = part.strip()
+            part_lower = part.lower()
+            for keyword, field in corrections.items():
+                if keyword in part_lower:
+                    match = re.search(r'(\d+(?:\.\d+)?)', part)
+                    if match:
+                        scan_result[field] = float(match.group(1))
+                        corrected = True
+                        break
 
         if corrected:
+            supa.table("pending_scans")\
+                .update({"scan_result": scan_result})\
+                .eq("id", pending_id)\
+                .execute()
             msg = (
-                f"✏️ Dato corregido. Datos actualizados:\n\n"
+                f"✏️ Datos corregidos:\n\n"
                 f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
                 f"💪 Proteína: {scan_result.get('protein_g')}g\n"
                 f"🍚 Carbohidratos: {scan_result.get('carbs_g')}g\n"
