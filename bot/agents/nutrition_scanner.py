@@ -70,16 +70,23 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None, b
     if not caption and product_name.lower() in generic_names:
         product_name = "Producto sin nombre"
 
-    # Usar brand del parámetro explícito primero
     final_brand = brand or data.get("brand") or None
 
-    # Si no hay brand explícito, separar última palabra del caption como marca
     if not final_brand and caption and len(caption.strip().split()) >= 2:
         words = caption.strip().split()
         final_brand = words[-1].capitalize()
         product_name = " ".join(words[:-1])
 
-    # Buscar si ya existe ese producto
+    # Convertir valores numéricos al tipo correcto
+    calories = int(float(data.get("calories_per_serving"))) if data.get("calories_per_serving") else None
+    protein = float(data.get("protein_g")) if data.get("protein_g") else None
+    carbs = float(data.get("carbs_g")) if data.get("carbs_g") else None
+    fat = float(data.get("fat_g")) if data.get("fat_g") else None
+    fiber = float(data.get("fiber_g")) if data.get("fiber_g") else None
+    sodium = float(data.get("sodium_mg")) if data.get("sodium_mg") else None
+    sugar = float(data.get("sugar_g")) if data.get("sugar_g") else None
+    serving_size = float(data.get("serving_size_g")) if data.get("serving_size_g") else None
+
     existing = supabase.table("food_database")\
         .select("id, product_name, times_used")\
         .eq("user_id", user_id)\
@@ -90,13 +97,13 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None, b
         supabase.table("food_database")\
             .update({
                 "brand": final_brand,
-                "calories_per_serving": data.get("calories_per_serving"),
-                "protein_g": data.get("protein_g"),
-                "carbs_g": data.get("carbs_g"),
-                "fat_g": data.get("fat_g"),
-                "fiber_g": data.get("fiber_g"),
-                "sodium_mg": data.get("sodium_mg"),
-                "serving_size_g": data.get("serving_size_g"),
+                "calories_per_serving": calories,
+                "protein_g": protein,
+                "carbs_g": carbs,
+                "fat_g": fat,
+                "fiber_g": fiber,
+                "sodium_mg": sodium,
+                "serving_size_g": serving_size,
                 "serving_description": data.get("serving_description"),
                 "times_used": existing.data[0]["times_used"] + 1
             })\
@@ -108,15 +115,15 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None, b
         "user_id": user_id,
         "product_name": product_name,
         "brand": final_brand,
-        "serving_size_g": data.get("serving_size_g"),
+        "serving_size_g": serving_size,
         "serving_description": data.get("serving_description"),
-        "calories_per_serving": data.get("calories_per_serving"),
-        "protein_g": data.get("protein_g"),
-        "carbs_g": data.get("carbs_g"),
-        "fat_g": data.get("fat_g"),
-        "fiber_g": data.get("fiber_g"),
-        "sodium_mg": data.get("sodium_mg"),
-        "sugar_g": data.get("sugar_g"),
+        "calories_per_serving": calories,
+        "protein_g": protein,
+        "carbs_g": carbs,
+        "fat_g": fat,
+        "fiber_g": fiber,
+        "sodium_mg": sodium,
+        "sugar_g": sugar,
         "raw_ai_response": data
     }).execute()
 
