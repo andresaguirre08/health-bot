@@ -29,16 +29,25 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scan_result = await scan_nutrition_label(bytes(image_bytes))
 
         if scan_result.get("is_nutrition_label"):
-            # Guardar temporalmente y pedir confirmación
-            context.user_data["pending_nutrition"] = {
+            from bot.db.client import supabase as supa
+
+            # Borrar pending anterior del mismo usuario
+            supa.table("pending_scans")\
+                .delete()\
+                .eq("telegram_id", telegram_id)\
+                .execute()
+
+            # Guardar en Supabase para persistir entre requests
+            supa.table("pending_scans").insert({
+                "user_id": user_id,
+                "telegram_id": telegram_id,
                 "scan_result": scan_result,
-                "product_name": caption,
-                "user_id": user_id
-            }
+                "product_name": caption
+            }).execute()
 
             product_display = caption or scan_result.get("product_name", "el producto")
 
-            msg = f"📋 Leí esta tabla nutricional:\n\n"
+            msg = "📋 Leí esta tabla nutricional:\n\n"
             msg += f"📦 Producto: {product_display}\n"
             msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
             msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
@@ -54,7 +63,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Respondé SI para guardar o corregí así:\n"
                 f"proteina 11 / calorias 139 / carbohidratos 9 / grasas 5"
             )
-
             await update.message.reply_text(msg)
             return
 

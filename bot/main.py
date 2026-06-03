@@ -58,18 +58,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if handled:
         return
 
-    # Confirmación y corrección de tabla nutricional
-    if context.user_data.get("pending_nutrition"):
+    # Confirmación y corrección de tabla nutricional desde Supabase
+    telegram_id_check = update.effective_user.id
+    from bot.db.client import supabase as supa
+    pending_scan = supa.table("pending_scans")\
+        .select("*")\
+        .eq("telegram_id", telegram_id_check)\
+        .order("created_at", desc=True)\
+        .limit(1)\
+        .execute()
+
+    if pending_scan.data:
         from bot.agents.nutrition_scanner import save_to_food_database
-        pending = context.user_data["pending_nutrition"]
-        user_input = update.message.text.strip()
-        user_input_lower = user_input.lower()
+        pending = pending_scan.data[0]
         scan_result = pending["scan_result"]
         product_name = pending["product_name"]
         user_id = pending["user_id"]
+        pending_id = pending["id"]
+        user_input = update.message.text.strip()
+        user_input_lower = user_input.lower()
 
         if user_input_lower == "si":
-            context.user_data["pending_nutrition"] = None
+            supa.table("pending_scans").delete().eq("id", pending_id).execute()
             save_result = await save_to_food_database(user_id, scan_result, product_name)
             action = save_result["action"]
             product = save_result["product"]
@@ -83,7 +93,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg)
             return
 
-        # Intentar corregir un campo
         corrections = {
             "proteina": "protein_g",
             "proteína": "protein_g",
@@ -101,8 +110,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 match = re.search(r'(\d+(?:\.\d+)?)', user_input)
                 if match:
                     scan_result[field] = float(match.group(1))
-                    pending["scan_result"] = scan_result
-                    context.user_data["pending_nutrition"] = pending
+                    supa.table("pending_scans")\
+                        .update({"scan_result": scan_result})\
+                        .eq("id", pending_id)\
+                        .execute()
                     corrected = True
                     break
 
