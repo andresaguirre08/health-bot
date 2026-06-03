@@ -18,17 +18,6 @@ from bot.handlers.commands import (
     cmd_polar,
     cmd_polar_code,
     cmd_sync_polar,
-    handle_measurement
-)
-
-from bot.handlers.commands import (
-    cmd_hoy,
-    cmd_progreso,
-    cmd_peso,
-    cmd_sync,
-    cmd_polar,
-    cmd_polar_code,
-    cmd_sync_polar,
     cmd_borrar,
     cmd_mialimentos,
     handle_measurement
@@ -47,7 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Hola {user.first_name} 💪\n\n"
         f"Soy tu agente personal de nutrición y entrenamiento.\n\n"
         f"Podés:\n"
-        f"📷 Enviarme una foto de tu comida\n"
+        f"📷 Enviarme una foto de tu comida o tabla nutricional\n"
         f"🎙 Mandarme un audio con lo que comiste\n"
         f"💬 Describir tu comida por texto\n"
         f"❓ Preguntarme cualquier cosa sobre tu dieta o entreno\n\n"
@@ -56,12 +45,51 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  /progreso — composición corporal\n"
         f"  /peso — registrar peso y medidas\n"
         f"  /sync — sincronizar Garmin\n"
-        f"  /sync_polar — sincronizar Polar\n\n"
+        f"  /sync_polar — sincronizar Polar\n"
+        f"  /borrar — borrar última comida\n"
+        f"  /mialimentos — ver base de alimentos\n\n"
         f"Arrancamos 🚀"
     )
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     handled = await handle_measurement(update, context)
     if handled:
+        return
+
+    # Guardar marca del producto nutricional
+    if context.user_data.get("pending_nutrition"):
+        from bot.agents.nutrition_scanner import save_to_food_database
+        pending = context.user_data["pending_nutrition"]
+        brand_input = update.message.text.strip()
+        brand = None if brand_input.lower() == "sin marca" else brand_input
+
+        scan_result = pending["scan_result"]
+        product_name = pending["product_name"]
+        user_id = pending["user_id"]
+
+        context.user_data["pending_nutrition"] = None
+
+        save_result = await save_to_food_database(user_id, scan_result, product_name, brand)
+        action = save_result["action"]
+        product = save_result["product"]
+
+        msg = f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
+        msg += f"📦 Producto: {product}\n"
+        if brand:
+            msg += f"🏷 Marca: {brand}\n"
+        msg += "\n"
+        msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
+        msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
+        msg += f"💪 Proteína: {scan_result.get('protein_g')}g\n"
+        msg += f"🍚 Carbohidratos: {scan_result.get('carbs_g')}g\n"
+        msg += f"🥑 Grasas: {scan_result.get('fat_g')}g\n"
+        if scan_result.get("fiber_g"):
+            msg += f"🌾 Fibra: {scan_result.get('fiber_g')}g\n"
+        if scan_result.get("sodium_mg"):
+            msg += f"🧂 Sodio: {scan_result.get('sodium_mg')}mg\n"
+        msg += f"\nCuando me digas que comiste {product} voy a usar estos datos exactos."
+        await update.message.reply_text(msg)
         return
 
     # Confirmar borrado de comida
@@ -111,6 +139,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source = meal.get("source", "ai")
             if source == "database":
                 source_msg = f"📦 Datos de tu base: {meal.get('db_product')}"
+            elif source == "mixed":
+                source_msg = f"{meal.get('db_product')}"
             else:
                 source_msg = "🤖 Estimado por IA"
 
@@ -175,6 +205,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source = meal.get("source", "ai")
             if source == "database":
                 source_msg = f"📦 Datos de tu base: {meal.get('db_product')}"
+            elif source == "mixed":
+                source_msg = f"{meal.get('db_product')}"
             else:
                 source_msg = "🤖 Estimado por IA"
 
@@ -196,11 +228,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
 
-
-
-
-
-
 async def post_init(app):
     from bot.scheduler.jobs import start_scheduler
     start_scheduler(app)
@@ -218,11 +245,11 @@ def main():
     app.add_handler(CommandHandler("polar", cmd_polar))
     app.add_handler(CommandHandler("polar_code", cmd_polar_code))
     app.add_handler(CommandHandler("sync_polar", cmd_sync_polar))
+    app.add_handler(CommandHandler("borrar", cmd_borrar))
+    app.add_handler(CommandHandler("mialimentos", cmd_mialimentos))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(CommandHandler("borrar", cmd_borrar))
-    app.add_handler(CommandHandler("mialimentos", cmd_mialimentos))
 
     logger.info("Bot iniciado...")
     app.run_polling(drop_pending_updates=True)

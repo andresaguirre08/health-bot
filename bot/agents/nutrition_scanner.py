@@ -62,10 +62,14 @@ async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg"
         return {"is_nutrition_label": False}
 
 async def save_to_food_database(user_id: str, data: dict, caption: str = None) -> dict:
-    # Usar el caption del mensaje como nombre si Claude no detectó el nombre
-    product_name = data.get("product_name", "").strip()
-    if not product_name or product_name.lower() in ["producto", "producto sin nombre", ""]:
-        product_name = caption or "Producto sin nombre"
+    # Caption siempre tiene prioridad absoluta sobre lo que Claude detectó
+    product_name = caption.strip() if caption else data.get("product_name", "").strip()
+    
+    # Si el nombre detectado es genérico, usar caption
+    generic_names = ["información nutricional", "informacion nutricional", 
+                     "tabla nutricional", "producto", "producto sin nombre", ""]
+    if not caption and product_name.lower() in generic_names:
+        product_name = "Producto sin nombre"
 
     # Buscar si ya existe exactamente ese producto
     existing = supabase.table("food_database")\

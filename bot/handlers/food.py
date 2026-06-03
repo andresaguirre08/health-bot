@@ -25,7 +25,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(photo.file_id)
         image_bytes = await file.download_as_bytearray()
 
-        # Caption del mensaje tiene prioridad como nombre del producto
+        # Caption del mensaje tiene prioridad absoluta como nombre del producto
         caption = update.message.caption or None
 
         # Detectar si es tabla nutricional
@@ -36,13 +36,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             action = save_result["action"]
             product = save_result["product"]
 
-            msg = (
-                f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
-                f"📦 {product}"
-            )
+            msg = f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
+            msg += f"📦 Guardado como: {product}\n"
             if scan_result.get("brand"):
-                msg += f" — {scan_result.get('brand')}"
-            msg += "\n\n"
+                msg += f"🏷 Marca: {scan_result.get('brand')}\n"
+            msg += "\n"
             msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
             msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
             msg += f"💪 Proteína: {scan_result.get('protein_g')}g\n"
@@ -52,7 +50,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += f"🌾 Fibra: {scan_result.get('fiber_g')}g\n"
             if scan_result.get("sodium_mg"):
                 msg += f"🧂 Sodio: {scan_result.get('sodium_mg')}mg\n"
-            msg += f"\nAhora cuando me digas que comiste {product} voy a usar estos datos exactos."
+            msg += f"\nCuando me digas que comiste {product} voy a usar estos datos exactos."
 
             await update.message.reply_text(msg)
             return
@@ -65,7 +63,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_context = await build_user_context(user_id)
         totals = await get_today_totals(user_id)
 
-        # Si hay caption, usarlo como descripción adicional para el análisis
         extra_context = f"El usuario dice que esto es: {caption}" if caption else ""
 
         result = analyze_food_photo(
