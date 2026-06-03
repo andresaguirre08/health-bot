@@ -11,8 +11,8 @@ SCAN_PROMPT = """Analizá esta imagen. Puede ser una tabla nutricional de un pro
 Si ES una tabla nutricional respondé SOLO con JSON válido en este formato exacto:
 {
   "is_nutrition_label": true,
-  "product_name": "nombre del producto",
-  "brand": "marca si se ve",
+  "product_name": "nombre del producto si se ve en la imagen",
+  "brand": "marca si se ve en la imagen",
   "serving_size_g": 30,
   "serving_description": "1 scoop (30g)",
   "calories_per_serving": 120,
@@ -61,17 +61,38 @@ async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg"
     except:
         return {"is_nutrition_label": False}
 
-async def save_to_food_database(user_id: str, data: dict, caption: str = None) -> dict:
-    # Caption siempre tiene prioridad absoluta sobre lo que Claude detectó
+
+async def save_to_food_database(user_id: str, data: dict, caption: str = None, brand: str = None) -> dict:
     product_name = caption.strip() if caption else data.get("product_name", "").strip()
-    
-    # Si el nombre detectado es genérico, usar caption
-    generic_names = ["información nutricional", "informacion nutricional", 
+
+    generic_names = ["información nutricional", "informacion nutricional",
                      "tabla nutricional", "producto", "producto sin nombre", ""]
     if not caption and product_name.lower() in generic_names:
         product_name = "Producto sin nombre"
 
-    # Buscar si ya existe exactamente ese producto
+    # Usar brand del parámetro explícito primero
+    final_brand = brand or data.get("brand") or None
+
+    # Si no hay brand explícito e incluye más de 2 palabras, intentar separar con Claude
+    if not final_brand and caption and len(caption.split()) >= 2:
+        try:
+            brand_response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=80,
+                system="""Del texto que te doy, identificá el nombre del producto y la marca.
+Respondé SOLO con JSON sin texto extra:
+{"product":"nombre del producto","brand":"marca"}
+Si no hay marca clara respondé:
+{"product":"texto completo","brand":null}""",
+                messages=[{"role": "user", "content": caption}]
+            )
+            parsed = json.loads(brand_response.content[0].text.strip())
+            product_name = parsed.get("product", product_name)
+            final_brand = parsed.get("brand")
+        except:
+            pass
+
+    # Buscar si ya existe ese producto
     existing = supabase.table("food_database")\
         .select("id, product_name, times_used")\
         .eq("user_id", user_id)\
@@ -81,6 +102,7 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None) -
     if existing.data:
         supabase.table("food_database")\
             .update({
+                "brand": final_brand,
                 "calories_per_serving": data.get("calories_per_serving"),
                 "protein_g": data.get("protein_g"),
                 "carbs_g": data.get("carbs_g"),
@@ -93,12 +115,12 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None) -
             })\
             .eq("id", existing.data[0]["id"])\
             .execute()
-        return {"action": "updated", "product": product_name}
+        return {"action": "updated", "product": product_name, "brand": final_brand}
 
-    result = supabase.table("food_database").insert({
+    supabase.table("food_database").insert({
         "user_id": user_id,
         "product_name": product_name,
-        "brand": data.get("brand"),
+        "brand": final_brand,
         "serving_size_g": data.get("serving_size_g"),
         "serving_description": data.get("serving_description"),
         "calories_per_serving": data.get("calories_per_serving"),
@@ -111,7 +133,8 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None) -
         "raw_ai_response": data
     }).execute()
 
-    return {"action": "created", "product": product_name}
+    return {"action": "created", "product": product_name, "brand": final_brand}
+
 
 async def search_food_database(user_id: str, query: str) -> list:
     result = supabase.table("food_database")\
@@ -130,4 +153,4 @@ async def get_all_products(user_id: str) -> list:
         .eq("user_id", user_id)\
         .order("times_used", desc=True)\
         .execute()
-    return result.data if result.data else []   
+    return result.data if result.data else []
