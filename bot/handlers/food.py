@@ -29,16 +29,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scan_result = await scan_nutrition_label(bytes(image_bytes))
 
         if scan_result.get("is_nutrition_label"):
-            save_result = await save_to_food_database(user_id, scan_result, caption)
-            action = save_result["action"]
-            product = save_result["product"]
-            final_brand = save_result.get("brand")
+            # Guardar temporalmente y pedir confirmación
+            context.user_data["pending_nutrition"] = {
+                "scan_result": scan_result,
+                "product_name": caption,
+                "user_id": user_id
+            }
 
-            msg = f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
-            msg += f"📦 Guardado como: {product}\n"
-            if final_brand:
-                msg += f"🏷 Marca: {final_brand}\n"
-            msg += "\n"
+            product_display = caption or scan_result.get("product_name", "el producto")
+
+            msg = f"📋 Leí esta tabla nutricional:\n\n"
+            msg += f"📦 Producto: {product_display}\n"
             msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
             msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
             msg += f"💪 Proteína: {scan_result.get('protein_g')}g\n"
@@ -48,7 +49,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += f"🌾 Fibra: {scan_result.get('fiber_g')}g\n"
             if scan_result.get("sodium_mg"):
                 msg += f"🧂 Sodio: {scan_result.get('sodium_mg')}mg\n"
-            msg += f"\nCuando me digas que comiste {product} voy a usar estos datos exactos."
+            msg += (
+                f"\n¿Son correctos estos datos?\n"
+                f"Respondé SI para guardar o corregí así:\n"
+                f"proteina 11 / calorias 139 / carbohidratos 9 / grasas 5"
+            )
 
             await update.message.reply_text(msg)
             return
