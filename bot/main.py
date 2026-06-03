@@ -73,11 +73,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_result = await save_to_food_database(user_id, scan_result, product_name, brand)
         action = save_result["action"]
         product = save_result["product"]
+        final_brand = save_result.get("brand")
 
         msg = f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
         msg += f"📦 Producto: {product}\n"
-        if brand:
-            msg += f"🏷 Marca: {brand}\n"
+        if final_brand:
+            msg += f"🏷 Marca: {final_brand}\n"
         msg += "\n"
         msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
         msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
