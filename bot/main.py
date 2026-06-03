@@ -118,8 +118,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         break
 
         if corrected:
+            import json
             supa.table("pending_scans")\
-                .update({"scan_result": scan_result})\
+                .update({"scan_result": json.loads(json.dumps(scan_result))})\
                 .eq("id", pending_id)\
                 .execute()
             msg = (
