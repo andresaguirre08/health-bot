@@ -25,21 +25,19 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(photo.file_id)
         image_bytes = await file.download_as_bytearray()
 
-        # Caption del mensaje tiene prioridad absoluta como nombre del producto
         caption = update.message.caption or None
-
-        # Detectar si es tabla nutricional
         scan_result = await scan_nutrition_label(bytes(image_bytes))
 
         if scan_result.get("is_nutrition_label"):
             save_result = await save_to_food_database(user_id, scan_result, caption)
             action = save_result["action"]
             product = save_result["product"]
+            final_brand = save_result.get("brand")
 
             msg = f"{'✅ Producto guardado' if action == 'created' else '🔄 Producto actualizado'} en tu base de datos\n\n"
             msg += f"📦 Guardado como: {product}\n"
-            if scan_result.get("brand"):
-                msg += f"🏷 Marca: {scan_result.get('brand')}\n"
+            if final_brand:
+                msg += f"🏷 Marca: {final_brand}\n"
             msg += "\n"
             msg += f"Por porción ({scan_result.get('serving_description', '')}):\n"
             msg += f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
