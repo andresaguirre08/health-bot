@@ -431,3 +431,34 @@ async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+
+async def cmd_mialimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        telegram_id = update.effective_user.id
+        name = update.effective_user.first_name
+        user_id = await get_or_create_user(telegram_id, name)
+
+        from bot.agents.nutrition_scanner import get_all_products
+        products = await get_all_products(user_id)
+
+        if not products:
+            await update.message.reply_text(
+                "No tenés productos guardados todavía.\n"
+                "Enviame una foto de la tabla nutricional de cualquier producto para agregarlo."
+            )
+            return
+
+        msg = f"📦 Tu base de alimentos ({len(products)} productos)\n\n"
+        for p in products:
+            msg += f"- {p.get('product_name')}"
+            if p.get('brand'):
+                msg += f" ({p.get('brand')})"
+            msg += f": {p.get('calories_per_serving')} kcal | {p.get('protein_g')}g proteína"
+            if p.get('serving_description'):
+                msg += f" por {p.get('serving_description')}"
+            msg += "\n"
+
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")

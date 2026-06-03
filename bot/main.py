@@ -30,6 +30,7 @@ from bot.handlers.commands import (
     cmd_polar_code,
     cmd_sync_polar,
     cmd_borrar,
+    cmd_mialimentos,
     handle_measurement
 )
 
@@ -204,6 +205,7 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CommandHandler("borrar", cmd_borrar))
+    app.add_handler(CommandHandler("mialimentos", cmd_mialimentos))
 
     logger.info("Bot iniciado...")
     app.run_polling(drop_pending_updates=True)
