@@ -73,24 +73,11 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None, b
     # Usar brand del parámetro explícito primero
     final_brand = brand or data.get("brand") or None
 
-    # Si no hay brand explícito e incluye más de 2 palabras, intentar separar con Claude
-    if not final_brand and caption and len(caption.split()) >= 2:
-        try:
-            brand_response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=80,
-                system="""Del texto que te doy, identificá el nombre del producto y la marca.
-Respondé SOLO con JSON sin texto extra:
-{"product":"nombre del producto","brand":"marca"}
-Si no hay marca clara respondé:
-{"product":"texto completo","brand":null}""",
-                messages=[{"role": "user", "content": caption}]
-            )
-            parsed = json.loads(brand_response.content[0].text.strip())
-            product_name = parsed.get("product", product_name)
-            final_brand = parsed.get("brand")
-        except:
-            pass
+    # Si no hay brand explícito, separar última palabra del caption como marca
+    if not final_brand and caption and len(caption.strip().split()) >= 2:
+        words = caption.strip().split()
+        final_brand = words[-1].capitalize()
+        product_name = " ".join(words[:-1])
 
     # Buscar si ya existe ese producto
     existing = supabase.table("food_database")\
