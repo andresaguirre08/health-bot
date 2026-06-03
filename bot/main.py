@@ -54,13 +54,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    handled = await handle_measurement(update, context)
-    if handled:
-        return
-
-    # Confirmación y corrección de tabla nutricional desde Supabase
+    # Confirmación y corrección de tabla nutricional — PRIMERO que todo
     telegram_id_check = update.effective_user.id
     from bot.db.client import supabase as supa
+    import json
     pending_scan = supa.table("pending_scans")\
         .select("*")\
         .eq("telegram_id", telegram_id_check)\
@@ -118,7 +115,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         break
 
         if corrected:
-            import json
             supa.table("pending_scans")\
                 .update({"scan_result": json.loads(json.dumps(scan_result))})\
                 .eq("id", pending_id)\
@@ -138,6 +134,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "proteina 11 / calorias 139 / carbohidratos 9 / grasas 5\n\n"
                 "O respondé SI para guardar los datos actuales."
             )
+        return
+
+    handled = await handle_measurement(update, context)
+    if handled:
         return
 
     # Confirmar borrado de comida
