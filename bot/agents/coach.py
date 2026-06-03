@@ -52,59 +52,120 @@ async def classify_message(user_message: str) -> str:
 
 async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict | None:
     from bot.agents.nutrition_scanner import search_food_database
+    import re
 
-    db_source = False
-    db_product = None
+    db_matches = []
+    remaining_text = user_message
 
-    # Buscar en la base de datos personal primero
+    # Buscar cada ingrediente en la base de datos
     if user_id:
-        words = user_message.lower().split()
-        for word in words:
-            if len(word) > 3:
+        # Separar por comas o "y" para identificar ingredientes individuales
+        ingredients = re.split(r',|\sy\s', user_message.lower())
+        
+        for ingredient in ingredients:
+            ingredient = ingredient.strip()
+            if len(ingredient) < 3:
+                continue
+                
+            # Buscar palabras clave del ingrediente en la DB
+            words = [w for w in ingredient.split() if len(w) > 3]
+            for word in words:
                 results = await search_food_database(user_id, word)
                 if results:
                     db_product = results[0]
-                    db_source = True
+                    
+                    # Detectar cantidad mencionada para este ingrediente
+                    quantity_match = re.search(
+                        r'(\d+(?:\.\d+)?)\s*(?:g|gr|gramos|scoop|scoops|unidad|unidades|lonjas|lonja|taza|cdas?)?',
+                        ingredient
+                    )
+                    multiplier = 1.0
+                    if quantity_match:
+                        quantity = float(quantity_match.group(1))
+                        serving_size = db_product.get("serving_size_g") or 1
+                        if serving_size > 0:
+                            multiplier = quantity / serving_size
+
+                    db_matches.append({
+                        "product": db_product,
+                        "multiplier": multiplier,
+                        "ingredient_text": ingredient
+                    })
+                    # Marcar como encontrado para no estimarlo con IA
+                    remaining_text = remaining_text.replace(ingredient, "")
                     break
 
-    if db_source and db_product:
-        # Calcular macros basado en la base de datos
-        # Intentar detectar cantidad mencionada
-        import re
-        quantity_match = re.search(r'(\d+)\s*(?:g|gr|gramos|scoop|scoops|porción|porciones)?', user_message.lower())
-        multiplier = 1.0
+    # Si encontró productos en la DB, sumar sus macros
+    if db_matches:
+        total = {
+            "calories": 0,
+            "protein_g": 0.0,
+            "carbs_g": 0.0,
+            "fat_g": 0.0
+        }
+        names = []
 
-        if quantity_match:
-            quantity = float(quantity_match.group(1))
-            serving_size = db_product.get("serving_size_g", 33)
-            if serving_size and serving_size > 0:
-                multiplier = quantity / serving_size
+        for match in db_matches:
+            p = match["product"]
+            m = match["multiplier"]
+            total["calories"] += round((p.get("calories_per_serving") or 0) * m)
+            total["protein_g"] += round((p.get("protein_g") or 0) * m, 1)
+            total["carbs_g"] += round((p.get("carbs_g") or 0) * m, 1)
+            total["fat_g"] += round((p.get("fat_g") or 0) * m, 1)
+            names.append(p.get("product_name"))
+
+        # Si quedó texto sin cubrir, estimar el resto con IA
+        remaining_text = remaining_text.strip().strip(",").strip()
+        if remaining_text and len(remaining_text) > 5:
+            ai_result = await _estimate_with_ai(remaining_text)
+            if ai_result:
+                total["calories"] += ai_result.get("calories", 0)
+                total["protein_g"] += ai_result.get("protein_g", 0)
+                total["carbs_g"] += ai_result.get("carbs_g", 0)
+                total["fat_g"] += ai_result.get("fat_g", 0)
+                source_msg = f"📦 Base: {', '.join(names)} + 🤖 IA para el resto"
+            else:
+                source_msg = f"📦 Datos de tu base: {', '.join(names)}"
+
+            return {
+                "description": user_message[:100],
+                "calories": total["calories"],
+                "protein_g": total["protein_g"],
+                "carbs_g": total["carbs_g"],
+                "fat_g": total["fat_g"],
+                "source": "mixed",
+                "db_product": source_msg
+            }
 
         return {
-            "description": db_product.get("product_name"),
-            "calories": round((db_product.get("calories_per_serving") or 0) * multiplier),
-            "protein_g": round((db_product.get("protein_g") or 0) * multiplier, 1),
-            "carbs_g": round((db_product.get("carbs_g") or 0) * multiplier, 1),
-            "fat_g": round((db_product.get("fat_g") or 0) * multiplier, 1),
+            "description": user_message[:100],
+            "calories": total["calories"],
+            "protein_g": total["protein_g"],
+            "carbs_g": total["carbs_g"],
+            "fat_g": total["fat_g"],
             "source": "database",
-            "db_product": db_product.get("product_name")
+            "db_product": f"📦 Base: {', '.join(names)}"
         }
 
-    # Si no está en la base, estimar con Claude
+    # Nada en la base — estimar todo con IA
+    ai_result = await _estimate_with_ai(user_message)
+    if ai_result:
+        ai_result["source"] = "ai"
+        return ai_result
+    return None
+
+
+async def _estimate_with_ai(text: str) -> dict | None:
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=150,
-        system="""Sos un nutricionista. El usuario describió una comida. Estimá los macros.
+        system="""Sos un nutricionista. Estimá los macros de esta comida.
 Respondé SOLO con JSON válido sin texto extra:
-{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0,"source":"ai"}""",
-        messages=[{"role": "user", "content": user_message}]
+{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}""",
+        messages=[{"role": "user", "content": text}]
     )
-
-    text = response.content[0].text.strip()
     try:
-        data = json.loads(text)
-        data["source"] = "ai"
-        return data
+        return json.loads(response.content[0].text.strip())
     except:
         return None
 
