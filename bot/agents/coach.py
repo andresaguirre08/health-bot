@@ -50,16 +50,61 @@ async def classify_message(user_message: str) -> str:
     return "FOOD" if "FOOD" in result else "CHAT"
 
 
-async def extract_meal_from_text(user_message: str) -> dict | None:
+async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict | None:
+    from bot.agents.nutrition_scanner import search_food_database
+
+    db_source = False
+    db_product = None
+
+    # Buscar en la base de datos personal primero
+    if user_id:
+        words = user_message.lower().split()
+        for word in words:
+            if len(word) > 3:
+                results = await search_food_database(user_id, word)
+                if results:
+                    db_product = results[0]
+                    db_source = True
+                    break
+
+    if db_source and db_product:
+        # Calcular macros basado en la base de datos
+        # Intentar detectar cantidad mencionada
+        import re
+        quantity_match = re.search(r'(\d+)\s*(?:g|gr|gramos|scoop|scoops|porción|porciones)?', user_message.lower())
+        multiplier = 1.0
+
+        if quantity_match:
+            quantity = float(quantity_match.group(1))
+            serving_size = db_product.get("serving_size_g", 33)
+            if serving_size and serving_size > 0:
+                multiplier = quantity / serving_size
+
+        return {
+            "description": db_product.get("product_name"),
+            "calories": round((db_product.get("calories_per_serving") or 0) * multiplier),
+            "protein_g": round((db_product.get("protein_g") or 0) * multiplier, 1),
+            "carbs_g": round((db_product.get("carbs_g") or 0) * multiplier, 1),
+            "fat_g": round((db_product.get("fat_g") or 0) * multiplier, 1),
+            "source": "database",
+            "db_product": db_product.get("product_name")
+        }
+
+    # Si no está en la base, estimar con Claude
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=150,
-        system=EXTRACT_PROMPT,
+        system="""Sos un nutricionista. El usuario describió una comida. Estimá los macros.
+Respondé SOLO con JSON válido sin texto extra:
+{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0,"source":"ai"}""",
         messages=[{"role": "user", "content": user_message}]
     )
+
     text = response.content[0].text.strip()
     try:
-        return json.loads(text)
+        data = json.loads(text)
+        data["source"] = "ai"
+        return data
     except:
         return None
 
@@ -79,7 +124,7 @@ async def process_message(user_message: str, user_context: str, user_id: str = N
     msg_type = await classify_message(user_message)
 
     if msg_type == "FOOD":
-        meal_data = await extract_meal_from_text(user_message)
+        meal_data = await extract_meal_from_text(user_message, user_id)
         if meal_data:
             return {
                 "type": "food",

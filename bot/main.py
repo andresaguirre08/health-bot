@@ -59,8 +59,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  /sync_polar — sincronizar Polar\n\n"
         f"Arrancamos 🚀"
     )
-
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     handled = await handle_measurement(update, context)
     if handled:
@@ -110,12 +108,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raw_response=meal.get("description", "")
             )
 
+            source = meal.get("source", "ai")
+            if source == "database":
+                source_msg = f"📦 Datos de tu base: {meal.get('db_product')}"
+            else:
+                source_msg = "🤖 Estimado por IA"
+
             await update.message.reply_text(
                 f"✅ {label} guardado\n\n"
                 f"🔥 Calorías: {meal.get('calories')} kcal\n"
                 f"💪 Proteína: {meal.get('protein_g')}g\n"
                 f"🍚 Carbohidratos: {meal.get('carbs_g')}g\n"
-                f"🥑 Grasas: {meal.get('fat_g')}g"
+                f"🥑 Grasas: {meal.get('fat_g')}g\n\n"
+                f"{source_msg}"
             )
         else:
             await update.message.reply_text(result["text"])
@@ -167,13 +172,20 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raw_response=meal.get("description", "")
             )
 
+            source = meal.get("source", "ai")
+            if source == "database":
+                source_msg = f"📦 Datos de tu base: {meal.get('db_product')}"
+            else:
+                source_msg = "🤖 Estimado por IA"
+
             await update.message.reply_text(
                 f"🎙 Escuché: {audio_text}\n\n"
                 f"✅ {label} guardado\n\n"
                 f"🔥 Calorías: {meal.get('calories')} kcal\n"
                 f"💪 Proteína: {meal.get('protein_g')}g\n"
                 f"🍚 Carbohidratos: {meal.get('carbs_g')}g\n"
-                f"🥑 Grasas: {meal.get('fat_g')}g"
+                f"🥑 Grasas: {meal.get('fat_g')}g\n\n"
+                f"{source_msg}"
             )
         else:
             await update.message.reply_text(
@@ -182,6 +194,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+
+
+
 
 
 async def post_init(app):
