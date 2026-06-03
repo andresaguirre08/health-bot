@@ -58,7 +58,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Es una foto de comida — analizar macros
         meal_type = get_meal_type_by_hour()
         label = MEAL_TYPE_LABELS.get(meal_type, meal_type)
-        await update.message.edit_text(f"📷 Analizando tu {label}... ⏳")
+        await update.message.reply_text(f"📷 Analizando tu {label}... ⏳")
 
         user_context = await build_user_context(user_id)
         totals = await get_today_totals(user_id)
