@@ -129,7 +129,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         break
 
         if corrected:
-            # Borrar el registro viejo y crear uno nuevo con datos corregidos
             supa.table("pending_scans").delete().eq("id", pending_id).execute()
             supa.table("pending_scans").insert({
                 "user_id": user_id,
@@ -137,7 +136,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "scan_result": json.loads(json.dumps(scan_result)),
                 "product_name": product_name
             }).execute()
-
             msg = (
                 f"✏️ Datos corregidos:\n\n"
                 f"🔥 Calorías: {scan_result.get('calories_per_serving')} kcal\n"
@@ -158,6 +156,58 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     handled = await handle_measurement(update, context)
     if handled:
         return
+
+    # Confirmar si registrar o consultar comida
+    if context.user_data.get("pending_food_text"):
+        user_input = update.message.text.strip().upper()
+        food_text = context.user_data["pending_food_text"]
+        user_id_food = context.user_data["pending_food_user_id"]
+
+        if user_input == "REGISTRAR":
+            context.user_data["pending_food_text"] = None
+            from bot.agents.coach import extract_meal_from_text
+            from bot.db.meals import save_meal, get_meal_type_by_hour, MEAL_TYPE_LABELS
+            meal = await extract_meal_from_text(food_text, user_id_food)
+            if meal:
+                meal_type = get_meal_type_by_hour()
+                label = MEAL_TYPE_LABELS.get(meal_type, meal_type)
+                await save_meal(
+                    user_id=user_id_food,
+                    calories=meal.get("calories", 0),
+                    protein=meal.get("protein_g", 0),
+                    carbs=meal.get("carbs_g", 0),
+                    fat=meal.get("fat_g", 0),
+                    description=meal.get("description", food_text),
+                    raw_response=food_text
+                )
+                source = meal.get("source", "ai")
+                source_msg = f"📦 Datos de tu base: {meal.get('db_product')}" if source == "database" else "🤖 Estimado por IA"
+                await update.message.reply_text(
+                    f"✅ {label} guardado\n\n"
+                    f"🔥 Calorías: {meal.get('calories')} kcal\n"
+                    f"💪 Proteína: {meal.get('protein_g')}g\n"
+                    f"🍚 Carbohidratos: {meal.get('carbs_g')}g\n"
+                    f"🥑 Grasas: {meal.get('fat_g')}g\n\n"
+                    f"{source_msg}"
+                )
+            else:
+                await update.message.reply_text("❌ No pude calcular los macros.")
+            return
+
+        elif user_input == "CONSULTA":
+            context.user_data["pending_food_text"] = None
+            from bot.utils.context_builder import build_user_context
+            from bot.agents.coach import coach_response
+            from bot.db.meals import get_or_create_user
+            user_context = await build_user_context(user_id_food)
+            response = await coach_response(food_text, user_context)
+            await update.message.reply_text(response)
+            return
+        else:
+            await update.message.reply_text(
+                "Respondé REGISTRAR para guardar la comida o CONSULTA para asesoría."
+            )
+            return
 
     # Confirmar borrado de comida
     if context.user_data.get("pending_delete_id"):
@@ -188,7 +238,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result = await process_message(update.message.text, user_context, user_id)
 
-        if result["type"] == "food" and result["meal_data"]:
+        if result["type"] == "confirm_food":
+            context.user_data["pending_food_text"] = result["meal_text"]
+            context.user_data["pending_food_user_id"] = user_id
+            await update.message.reply_text(result["text"])
+
+        elif result["type"] == "food" and result["meal_data"]:
             meal = result["meal_data"]
             meal_type = get_meal_type_by_hour()
             label = MEAL_TYPE_LABELS.get(meal_type, meal_type)

@@ -187,13 +187,11 @@ async def process_message(user_message: str, user_context: str, user_id: str = N
     msg_type = await classify_message(user_message)
 
     if msg_type == "FOOD":
-        meal_data = await extract_meal_from_text(user_message, user_id)
-        if meal_data:
-            return {
-                "type": "food",
-                "meal_data": meal_data,
-                "text": None
-            }
+        return {
+            "type": "confirm_food",
+            "meal_text": user_message,
+            "text": "¿Ya comiste esto o estás preguntando si podés comerlo?\n\n1️⃣ Respondé REGISTRAR para guardarlo\n2️⃣ Respondé CONSULTA para que te asesore"
+        }
 
     response_text = await coach_response(user_message, user_context)
 
