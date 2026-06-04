@@ -135,9 +135,9 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
                 total["fat_g"] = round(total["fat_g"] + ai_result.get("fat_g", 0), 1)
                 source_msg = f"📦 Base: {', '.join(names)} + 🤖 IA para el resto"
             else:
-                source_msg = f"📦 Datos de tu base: {', '.join(names)}"
+                source_msg = f"📦 Base: {', '.join(names)}"
         else:
-            source_msg = f"📦 Datos de tu base: {', '.join(names)}"
+            source_msg = f"📦 Base: {', '.join(names)}"
 
         return {
             "description": user_message[:100],
