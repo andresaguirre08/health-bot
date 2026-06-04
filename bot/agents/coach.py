@@ -50,21 +50,24 @@ async def classify_message(user_message: str) -> str:
     )
     result = response.content[0].text.strip().upper()
     return "FOOD" if "FOOD" in result else "CHAT"
+
+
 async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict | None:
     from bot.agents.nutrition_scanner import search_food_database
     import re
 
     db_matches = []
-    remaining_text = user_message
+    remaining_parts = []
 
     if user_id:
-        ingredients = re.split(r',|\sy\s', user_message.lower())
+        ingredients = re.split(r',|\s+con\s+|\s+más\s+|\s+mas\s+|\s*\+\s*', user_message.lower())
 
         for ingredient in ingredients:
             ingredient = ingredient.strip()
             if len(ingredient) < 3:
                 continue
 
+            found = False
             words = [w for w in ingredient.split() if len(w) > 3]
             for word in words:
                 results = await search_food_database(user_id, word)
@@ -94,10 +97,16 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
                     db_matches.append({
                         "product": db_product,
                         "multiplier": multiplier,
-                        "ingredient_text": ingredient
                     })
-                    remaining_text = re.sub(re.escape(ingredient), "", remaining_text, flags=re.IGNORECASE).strip()
+                    found = True
                     break
+
+            if not found:
+                remaining_parts.append(ingredient)
+    else:
+        remaining_parts.append(user_message.lower())
+
+    remaining_text = ", ".join(remaining_parts).strip()
 
     if db_matches:
         total = {
@@ -117,27 +126,18 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             total["fat_g"] += round((p.get("fat_g") or 0) * m, 1)
             names.append(p.get("product_name"))
 
-        remaining_text = remaining_text.strip().strip(",").strip()
         if remaining_text and len(remaining_text) > 5:
             ai_result = await _estimate_with_ai(remaining_text)
             if ai_result:
                 total["calories"] += ai_result.get("calories", 0)
-                total["protein_g"] += round(total["protein_g"] + ai_result.get("protein_g", 0), 1)
-                total["carbs_g"] += round(total["carbs_g"] + ai_result.get("carbs_g", 0), 1)
-                total["fat_g"] += round(total["fat_g"] + ai_result.get("fat_g", 0), 1)
+                total["protein_g"] = round(total["protein_g"] + ai_result.get("protein_g", 0), 1)
+                total["carbs_g"] = round(total["carbs_g"] + ai_result.get("carbs_g", 0), 1)
+                total["fat_g"] = round(total["fat_g"] + ai_result.get("fat_g", 0), 1)
                 source_msg = f"📦 Base: {', '.join(names)} + 🤖 IA para el resto"
             else:
                 source_msg = f"📦 Datos de tu base: {', '.join(names)}"
-
-            return {
-                "description": user_message[:100],
-                "calories": total["calories"],
-                "protein_g": total["protein_g"],
-                "carbs_g": total["carbs_g"],
-                "fat_g": total["fat_g"],
-                "source": "mixed",
-                "db_product": source_msg
-            }
+        else:
+            source_msg = f"📦 Datos de tu base: {', '.join(names)}"
 
         return {
             "description": user_message[:100],
@@ -145,8 +145,8 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             "protein_g": total["protein_g"],
             "carbs_g": total["carbs_g"],
             "fat_g": total["fat_g"],
-            "source": "database",
-            "db_product": f"📦 Base: {', '.join(names)}"
+            "source": "mixed" if remaining_text else "database",
+            "db_product": source_msg
         }
 
     ai_result = await _estimate_with_ai(user_message)
@@ -154,6 +154,7 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
         ai_result["source"] = "ai"
         return ai_result
     return None
+
 
 async def _estimate_with_ai(text: str) -> dict | None:
     response = client.messages.create(
@@ -166,9 +167,7 @@ Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
     )
     try:
         raw = response.content[0].text.strip()
-        # Limpiar posibles backticks o texto extra
         raw = raw.replace("```json", "").replace("```", "").strip()
-        # Encontrar el JSON en el texto
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start >= 0 and end > start:
