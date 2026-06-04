@@ -66,7 +66,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Arrancamos 🚀"
     )
 
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Confirmación y corrección de tabla nutricional — PRIMERO que todo
     telegram_id_check = update.effective_user.id
@@ -163,7 +162,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         food_text = context.user_data["pending_food_text"]
         user_id_food = context.user_data["pending_food_user_id"]
 
-        if user_input == "REGISTRAR":
+        if user_input in ["REGISTRAR", "1"]:
             context.user_data["pending_food_text"] = None
             from bot.agents.coach import extract_meal_from_text
             from bot.db.meals import save_meal, get_meal_type_by_hour, MEAL_TYPE_LABELS
@@ -181,7 +180,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     raw_response=food_text
                 )
                 source = meal.get("source", "ai")
-                source_msg = f"📦 Datos de tu base: {meal.get('db_product')}" if source == "database" else "🤖 Estimado por IA"
+                if source == "database":
+                    source_msg = f"📦 Datos de tu base: {meal.get('db_product')}"
+                elif source == "mixed":
+                    source_msg = f"{meal.get('db_product')}"
+                else:
+                    source_msg = "🤖 Estimado por IA"
                 await update.message.reply_text(
                     f"✅ {label} guardado\n\n"
                     f"🔥 Calorías: {meal.get('calories')} kcal\n"
@@ -194,18 +198,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ No pude calcular los macros.")
             return
 
-        elif user_input == "CONSULTA":
+        elif user_input in ["CONSULTA", "2"]:
             context.user_data["pending_food_text"] = None
             from bot.utils.context_builder import build_user_context
             from bot.agents.coach import coach_response
-            from bot.db.meals import get_or_create_user
             user_context = await build_user_context(user_id_food)
             response = await coach_response(food_text, user_context)
             await update.message.reply_text(response)
             return
+
         else:
             await update.message.reply_text(
-                "Respondé REGISTRAR para guardar la comida o CONSULTA para asesoría."
+                "Respondé REGISTRAR o 1 para guardar la comida\nCONSULTA o 2 para asesoría."
             )
             return
 
@@ -279,7 +283,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
-
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎙 Escuchando... ⏳")
