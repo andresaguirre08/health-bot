@@ -50,7 +50,6 @@ async def classify_message(user_message: str) -> str:
     )
     result = response.content[0].text.strip().upper()
     return "FOOD" if "FOOD" in result else "CHAT"
-
 async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict | None:
     from bot.agents.nutrition_scanner import search_food_database
     import re
@@ -97,7 +96,7 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
                         "multiplier": multiplier,
                         "ingredient_text": ingredient
                     })
-                    remaining_text = remaining_text.replace(ingredient, "")
+                    remaining_text = re.sub(re.escape(ingredient), "", remaining_text, flags=re.IGNORECASE).strip()
                     break
 
     if db_matches:
@@ -123,9 +122,9 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             ai_result = await _estimate_with_ai(remaining_text)
             if ai_result:
                 total["calories"] += ai_result.get("calories", 0)
-                total["protein_g"] += ai_result.get("protein_g", 0)
-                total["carbs_g"] += ai_result.get("carbs_g", 0)
-                total["fat_g"] += ai_result.get("fat_g", 0)
+                total["protein_g"] += round(total["protein_g"] + ai_result.get("protein_g", 0), 1)
+                total["carbs_g"] += round(total["carbs_g"] + ai_result.get("carbs_g", 0), 1)
+                total["fat_g"] += round(total["fat_g"] + ai_result.get("fat_g", 0), 1)
                 source_msg = f"📦 Base: {', '.join(names)} + 🤖 IA para el resto"
             else:
                 source_msg = f"📦 Datos de tu base: {', '.join(names)}"
