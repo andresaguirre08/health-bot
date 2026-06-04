@@ -11,9 +11,11 @@ BOGOTA_TZ = pytz.timezone("America/Bogota")
 
 CLASSIFY_PROMPT = """Analizá el mensaje y clasificalo en una de estas dos categorías:
 
-FOOD: si el mensaje describe alimentos, ingredientes o comidas que el usuario consumió o está describiendo (con o sin cantidades). Ejemplos: "1 scoop de proteína con leche", "comí pollo con arroz", "200g de pechuga cocida", "me tomé un batido", "desayuné huevos"
+FOOD: si el mensaje describe alimentos, ingredientes o comidas que el usuario consumió o está describiendo (con o sin cantidades). Ejemplos: "1 scoop de proteína con leche", "comí pollo con arroz", "200g de pechuga cocida", "me tomé un batido", "desayuné huevos", "230 gramos de solomo de res con sopa", "arroz con pollo y ensalada", "me comí una pizza"
 
-CHAT: si es una pregunta, consulta, duda o conversación. Ejemplos: "¿puedo comer pizza?", "dame un feedback", "¿qué como?", "¿cómo voy hoy?"
+CHAT: si es una pregunta, consulta, duda o conversación. Ejemplos: "¿puedo comer pizza?", "dame un feedback", "¿qué como?", "¿cómo voy hoy?", "guardar", "hola"
+
+REGLA PRINCIPAL: Si el mensaje menciona alimentos con o sin cantidades y NO tiene signo de pregunta, es FOOD.
 
 Respondé SOLO con la palabra FOOD o CHAT, nada más."""
 
