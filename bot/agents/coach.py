@@ -51,7 +51,6 @@ async def classify_message(user_message: str) -> str:
     result = response.content[0].text.strip().upper()
     return "FOOD" if "FOOD" in result else "CHAT"
 
-
 async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict | None:
     from bot.agents.nutrition_scanner import search_food_database
     import re
@@ -59,45 +58,48 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
     db_matches = []
     remaining_text = user_message
 
-    # Buscar cada ingrediente en la base de datos
     if user_id:
-        # Separar por comas o "y" para identificar ingredientes individuales
         ingredients = re.split(r',|\sy\s', user_message.lower())
-        
+
         for ingredient in ingredients:
             ingredient = ingredient.strip()
             if len(ingredient) < 3:
                 continue
-                
-            # Buscar palabras clave del ingrediente en la DB
+
             words = [w for w in ingredient.split() if len(w) > 3]
             for word in words:
                 results = await search_food_database(user_id, word)
                 if results:
                     db_product = results[0]
-                    
-                    # Detectar cantidad mencionada para este ingrediente
+
                     quantity_match = re.search(
-                        r'(\d+(?:\.\d+)?)\s*(?:g|gr|gramos|scoop|scoops|unidad|unidades|lonjas|lonja|taza|cdas?)?',
+                        r'(\d+(?:\.\d+)?)\s*(g|gr|gramos|ml|kg)?'
+                        r'(?:\s*(?:de\s+)?(?:scoop|scoops|cuchara\s+medidora|cucharas\s+medidoras|'
+                        r'unidad|unidades|lonja|lonjas|taza|tazas|cdas?|porcion|porciones|'
+                        r'vaso|vasos|tajada|tajadas|rebanada|rebanadas|sobre|sobres))?',
                         ingredient
                     )
                     multiplier = 1.0
                     if quantity_match:
                         quantity = float(quantity_match.group(1))
+                        unit = (quantity_match.group(2) or "").lower()
                         serving_size = db_product.get("serving_size_g") or 1
-                        if serving_size > 0:
-                            multiplier = quantity / serving_size
+
+                        if unit in ("g", "gr", "gramos", "ml", "kg"):
+                            if unit == "kg":
+                                quantity *= 1000
+                            multiplier = quantity / serving_size if serving_size > 0 else 1.0
+                        else:
+                            multiplier = quantity
 
                     db_matches.append({
                         "product": db_product,
                         "multiplier": multiplier,
                         "ingredient_text": ingredient
                     })
-                    # Marcar como encontrado para no estimarlo con IA
                     remaining_text = remaining_text.replace(ingredient, "")
                     break
 
-    # Si encontró productos en la DB, sumar sus macros
     if db_matches:
         total = {
             "calories": 0,
@@ -116,7 +118,6 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             total["fat_g"] += round((p.get("fat_g") or 0) * m, 1)
             names.append(p.get("product_name"))
 
-        # Si quedó texto sin cubrir, estimar el resto con IA
         remaining_text = remaining_text.strip().strip(",").strip()
         if remaining_text and len(remaining_text) > 5:
             ai_result = await _estimate_with_ai(remaining_text)
@@ -149,13 +150,11 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             "db_product": f"📦 Base: {', '.join(names)}"
         }
 
-    # Nada en la base — estimar todo con IA
     ai_result = await _estimate_with_ai(user_message)
     if ai_result:
         ai_result["source"] = "ai"
         return ai_result
     return None
-
 
 async def _estimate_with_ai(text: str) -> dict | None:
     response = client.messages.create(
