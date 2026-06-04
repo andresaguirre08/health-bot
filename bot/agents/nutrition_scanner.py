@@ -1,225 +1,149 @@
 import anthropic
+import base64
 import json
 from bot.utils.config import ANTHROPIC_API_KEY
 from bot.db.client import supabase
-from datetime import datetime
-import pytz
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-BOGOTA_TZ = pytz.timezone("America/Bogota")
+
+SCAN_PROMPT = """Analizá esta imagen. Puede ser una tabla nutricional de un producto alimenticio.
+
+Si ES una tabla nutricional respondé SOLO con JSON válido en este formato exacto:
+{
+  "is_nutrition_label": true,
+  "product_name": "nombre del producto si se ve en la imagen",
+  "brand": "marca si se ve en la imagen",
+  "serving_size_g": 30,
+  "serving_description": "1 scoop (30g)",
+  "calories_per_serving": 120,
+  "protein_g": 24,
+  "carbs_g": 3,
+  "fat_g": 2,
+  "fiber_g": 0,
+  "sodium_mg": 150,
+  "sugar_g": 1
+}
+
+Si NO es una tabla nutricional respondé SOLO con:
+{"is_nutrition_label": false}
+
+Sin texto extra, sin markdown, solo JSON."""
 
 
-CLASSIFY_PROMPT = """Analizá el mensaje y clasificalo en una de estas dos categorías:
+async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-FOOD: si el mensaje describe alimentos, ingredientes o comidas que el usuario consumió o está describiendo (con o sin cantidades). Ejemplos: "1 scoop de proteína con leche", "comí pollo con arroz", "200g de pechuga cocida", "me tomé un batido", "desayuné huevos", "230 gramos de solomo de res con sopa", "arroz con pollo y ensalada", "me comí una pizza"
-
-CHAT: si es una pregunta, consulta, duda o conversación. Ejemplos: "¿puedo comer pizza?", "dame un feedback", "¿qué como?", "¿cómo voy hoy?", "guardar", "hola"
-
-REGLA PRINCIPAL: Si el mensaje menciona alimentos con o sin cantidades y NO tiene signo de pregunta, es FOOD.
-
-Respondé SOLO con la palabra FOOD o CHAT, nada más."""
-
-
-EXTRACT_PROMPT = """Sos un nutricionista. El usuario describió una comida. Estimá los macros con precisión.
-
-Respondé SOLO con JSON válido en este formato exacto, sin texto extra, sin markdown:
-{"description":"nombre descriptivo del alimento","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}
-
-Reemplazá los 0 con valores reales estimados."""
-
-
-COACH_PROMPT = """Eres el nutricionista y coach personal de Andrés. Directo, concreto, sin rodeos.
-
-Objetivo: ayudarle a llegar a 85kg y menos de 20% de grasa corporal manteniendo músculo.
-
-Reglas:
-- Español, tono directo y amigable
-- Sin asteriscos ni markdown, solo texto plano
-- Máximo 3 líneas de respuesta
-- Usá el contexto del día para dar respuestas precisas
-- Si pregunta cómo va, analizá los datos reales del contexto
-- Si pregunta qué comer, sugerí opciones concretas basadas en la proteína pendiente"""
-
-
-async def classify_message(user_message: str) -> str:
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=10,
-        system=CLASSIFY_PROMPT,
-        messages=[{"role": "user", "content": user_message}]
+        max_tokens=400,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": image_b64
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": SCAN_PROMPT
+                }
+            ]
+        }]
     )
-    result = response.content[0].text.strip().upper()
-    return "FOOD" if "FOOD" in result else "CHAT"
 
-
-async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict | None:
-    from bot.agents.nutrition_scanner import search_food_database
-    import re
-
-    db_matches = []
-    remaining_parts = []
-
-    if user_id:
-        ingredients = re.split(r',|\scon\s', user_message.lower())
-
-        for ingredient in ingredients:
-            ingredient = ingredient.strip()
-            if len(ingredient) < 3:
-                continue
-
-            found = False
-            words = [w for w in ingredient.split() if len(w) > 3]
-            for word in words:
-                results = await search_food_database(user_id, word)
-                if results:
-                    db_product = results[0]
-
-                    quantity_match = re.search(
-                        r'(\d+(?:\.\d+)?)\s*(g|gr|gramos|ml|kg)?'
-                        r'(?:\s*(?:de\s+)?(?:scoop|scoops|cuchara\s+medidora|cucharas\s+medidoras|'
-                        r'unidad|unidades|lonja|lonjas|taza|tazas|cdas?|porcion|porciones|'
-                        r'vaso|vasos|tajada|tajadas|rebanada|rebanadas|sobre|sobres))?',
-                        ingredient
-                    )
-                    multiplier = 1.0
-                    if quantity_match:
-                        quantity = float(quantity_match.group(1))
-                        unit = (quantity_match.group(2) or "").lower()
-                        serving_size = db_product.get("serving_size_g") or 1
-
-                        if unit in ("g", "gr", "gramos", "ml", "kg"):
-                            if unit == "kg":
-                                quantity *= 1000
-                            multiplier = quantity / serving_size if serving_size > 0 else 1.0
-                        else:
-                            multiplier = quantity
-
-                    db_matches.append({
-                        "product": db_product,
-                        "multiplier": multiplier,
-                    })
-                    found = True
-                    break
-
-            if not found:
-                remaining_parts.append(ingredient)
-    else:
-        remaining_parts.append(user_message.lower())
-
-    remaining_text = ", ".join(remaining_parts).strip()
-
-    if db_matches:
-        total = {
-            "calories": 0,
-            "protein_g": 0.0,
-            "carbs_g": 0.0,
-            "fat_g": 0.0
-        }
-        names = []
-
-        for match in db_matches:
-            p = match["product"]
-            m = match["multiplier"]
-            total["calories"] += round((p.get("calories_per_serving") or 0) * m)
-            total["protein_g"] += round((p.get("protein_g") or 0) * m, 1)
-            total["carbs_g"] += round((p.get("carbs_g") or 0) * m, 1)
-            total["fat_g"] += round((p.get("fat_g") or 0) * m, 1)
-            names.append(p.get("product_name"))
-
-        if remaining_text and len(remaining_text) > 5:
-            ai_result = await _estimate_with_ai(remaining_text)
-            if ai_result:
-                total["calories"] += ai_result.get("calories", 0)
-                total["protein_g"] = round(total["protein_g"] + ai_result.get("protein_g", 0), 1)
-                total["carbs_g"] = round(total["carbs_g"] + ai_result.get("carbs_g", 0), 1)
-                total["fat_g"] = round(total["fat_g"] + ai_result.get("fat_g", 0), 1)
-                source_msg = f"📦 Base: {', '.join(names)} + 🤖 IA para el resto"
-            else:
-                source_msg = f"📦 Datos de tu base: {', '.join(names)}"
-        else:
-            source_msg = f"📦 Datos de tu base: {', '.join(names)}"
-
-        return {
-            "description": user_message[:100],
-            "calories": total["calories"],
-            "protein_g": total["protein_g"],
-            "carbs_g": total["carbs_g"],
-            "fat_g": total["fat_g"],
-            "source": "mixed" if remaining_text else "database",
-            "db_product": source_msg
-        }
-
-    ai_result = await _estimate_with_ai(user_message)
-    if ai_result:
-        ai_result["source"] = "ai"
-        return ai_result
-    return None
-
-
-async def _estimate_with_ai(text: str) -> dict | None:
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=150,
-        system="""Sos un nutricionista. Estimá los macros de esta comida.
-Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
-{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}""",
-        messages=[{"role": "user", "content": text}]
-    )
+    text = response.content[0].text.strip()
     try:
-        raw = response.content[0].text.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            return json.loads(raw[start:end])
-        return None
+        return json.loads(text)
     except:
-        return None
+        return {"is_nutrition_label": False}
 
 
-async def coach_response(user_message: str, user_context: str) -> str:
-    full_system = user_context + "\n\n" + COACH_PROMPT if user_context else COACH_PROMPT
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=300,
-        system=full_system,
-        messages=[{"role": "user", "content": user_message}]
-    )
-    return response.content[0].text.strip()
+async def save_to_food_database(user_id: str, data: dict, caption: str = None, brand: str = None) -> dict:
+    product_name = caption.strip() if caption else data.get("product_name", "").strip()
+
+    generic_names = ["información nutricional", "informacion nutricional",
+                     "tabla nutricional", "producto", "producto sin nombre", ""]
+    if not caption and product_name.lower() in generic_names:
+        product_name = "Producto sin nombre"
+
+    final_brand = brand or data.get("brand") or None
+
+    if not final_brand and caption and len(caption.strip().split()) >= 2:
+        words = caption.strip().split()
+        final_brand = words[-1].capitalize()
+        product_name = " ".join(words[:-1])
+
+    calories = int(float(data.get("calories_per_serving"))) if data.get("calories_per_serving") else None
+    protein = float(data.get("protein_g")) if data.get("protein_g") else None
+    carbs = float(data.get("carbs_g")) if data.get("carbs_g") else None
+    fat = float(data.get("fat_g")) if data.get("fat_g") else None
+    fiber = float(data.get("fiber_g")) if data.get("fiber_g") else None
+    sodium = float(data.get("sodium_mg")) if data.get("sodium_mg") else None
+    sugar = float(data.get("sugar_g")) if data.get("sugar_g") else None
+    serving_size = float(data.get("serving_size_g")) if data.get("serving_size_g") else None
+
+    existing = supabase.table("food_database")\
+        .select("id, product_name, times_used")\
+        .eq("user_id", user_id)\
+        .ilike("product_name", product_name)\
+        .execute()
+
+    if existing.data:
+        supabase.table("food_database")\
+            .update({
+                "brand": final_brand,
+                "calories_per_serving": calories,
+                "protein_g": protein,
+                "carbs_g": carbs,
+                "fat_g": fat,
+                "fiber_g": fiber,
+                "sodium_mg": sodium,
+                "serving_size_g": serving_size,
+                "serving_description": data.get("serving_description"),
+                "times_used": existing.data[0]["times_used"] + 1
+            })\
+            .eq("id", existing.data[0]["id"])\
+            .execute()
+        return {"action": "updated", "product": product_name, "brand": final_brand}
+
+    supabase.table("food_database").insert({
+        "user_id": user_id,
+        "product_name": product_name,
+        "brand": final_brand,
+        "serving_size_g": serving_size,
+        "serving_description": data.get("serving_description"),
+        "calories_per_serving": calories,
+        "protein_g": protein,
+        "carbs_g": carbs,
+        "fat_g": fat,
+        "fiber_g": fiber,
+        "sodium_mg": sodium,
+        "sugar_g": sugar,
+        "raw_ai_response": data
+    }).execute()
+
+    return {"action": "created", "product": product_name, "brand": final_brand}
 
 
-async def process_message(user_message: str, user_context: str, user_id: str = None) -> dict:
-    msg_type = await classify_message(user_message)
+async def search_food_database(user_id: str, query: str) -> list:
+    result = supabase.table("food_database")\
+        .select("*")\
+        .eq("user_id", user_id)\
+        .ilike("product_name", f"%{query}%")\
+        .order("times_used", desc=True)\
+        .limit(3)\
+        .execute()
+    return result.data if result.data else []
 
-    if msg_type == "FOOD":
-        return {
-            "type": "confirm_food",
-            "meal_text": user_message,
-            "text": "¿Ya comiste esto o estás preguntando si podés comerlo?\n\n1️⃣ Respondé REGISTRAR para guardarlo\n2️⃣ Respondé CONSULTA para que te asesore"
-        }
 
-    response_text = await coach_response(user_message, user_context)
-
-    if user_id:
-        today = datetime.now(BOGOTA_TZ).strftime("%Y-%m-%d")
-        try:
-            supabase.table("chat_history").insert({
-                "user_id": user_id,
-                "role": "user",
-                "content": user_message,
-                "session_date": today
-            }).execute()
-            supabase.table("chat_history").insert({
-                "user_id": user_id,
-                "role": "assistant",
-                "content": response_text,
-                "session_date": today
-            }).execute()
-        except:
-            pass
-
-    return {
-        "type": "chat",
-        "meal_data": None,
-        "text": response_text
-    }
+async def get_all_products(user_id: str) -> list:
+    result = supabase.table("food_database")\
+        .select("product_name, brand, calories_per_serving, protein_g, serving_description")\
+        .eq("user_id", user_id)\
+        .order("times_used", desc=True)\
+        .execute()
+    return result.data if result.data else []
