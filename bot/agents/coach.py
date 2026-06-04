@@ -162,12 +162,20 @@ async def _estimate_with_ai(text: str) -> dict | None:
         model="claude-sonnet-4-20250514",
         max_tokens=150,
         system="""Sos un nutricionista. Estimá los macros de esta comida.
-Respondé SOLO con JSON válido sin texto extra:
+Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
 {"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}""",
         messages=[{"role": "user", "content": text}]
     )
     try:
-        return json.loads(response.content[0].text.strip())
+        raw = response.content[0].text.strip()
+        # Limpiar posibles backticks o texto extra
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        # Encontrar el JSON en el texto
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(raw[start:end])
+        return None
     except:
         return None
 
