@@ -22,18 +22,6 @@ from bot.handlers.commands import (
     cmd_sync_polar,
     cmd_borrar,
     cmd_mialimentos,
-    handle_measurement
-)
-from bot.handlers.commands import (
-    cmd_hoy,
-    cmd_progreso,
-    cmd_peso,
-    cmd_sync,
-    cmd_polar,
-    cmd_polar_code,
-    cmd_sync_polar,
-    cmd_borrar,
-    cmd_mialimentos,
     cmd_tabla,
     handle_measurement
 )
