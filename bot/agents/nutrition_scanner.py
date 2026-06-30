@@ -34,7 +34,7 @@ async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg"
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-opus-4-1-20250805",
         max_tokens=400,
         messages=[{
             "role": "user",
