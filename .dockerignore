@@ -1,8 +1,59 @@
+# Virtual environments
 venv/
+env/
+ENV/
+.venv/
+
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Git
 .git
+.gitignore
+.gitattributes
+
+# Logs
 *.log
-test_garmin.py
+logs/
+
+# Tests
+test_*.py
+*_test.py
+
+# OS
+.DS_Store
+.thumbs.db
+Thumbs.db
+
+# Project specific
+migrations/
+.vs/
+data/
+*.sqlite
+*.db
