@@ -239,7 +239,7 @@ async def daily_summary(app):
 Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa. Sin asteriscos ni markdown. Tono directo y personal."""
 
             feedback_response = claude.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-3-5-sonnet-20241022",
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}]
             )

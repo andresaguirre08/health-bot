@@ -59,7 +59,7 @@ def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
         full_system = user_context + "\n\n" + SYSTEM_PROMPT_BASE
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-3-5-sonnet-20241022",
         max_tokens=1024,
         system=full_system,
         messages=[
