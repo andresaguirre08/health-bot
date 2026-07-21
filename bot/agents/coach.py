@@ -60,7 +60,7 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
     remaining_parts = []
 
     if user_id:
-        ingredients = re.split(r',|\s+con\s+|\s+más\s+|\s+mas\s+|\s*\+\s*', user_message.lower())
+        ingredients = re.split(r',|\s+con\s+|\s+más\s+|\s+mas\s+|\s+y\s+|\s*\+\s*', user_message.lower())
 
         for ingredient in ingredients:
             ingredient = ingredient.strip()
