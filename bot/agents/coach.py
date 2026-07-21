@@ -1,7 +1,7 @@
 import anthropic
-import json
 from bot.utils.config import ANTHROPIC_API_KEY
 from bot.db.client import supabase
+from bot.utils.json_extract import extract_json
 from datetime import datetime
 import pytz
 
@@ -28,17 +28,23 @@ Respondé SOLO con JSON válido en este formato exacto, sin texto extra, sin mar
 Reemplazá los 0 con valores reales estimados."""
 
 
-COACH_PROMPT = """Eres el nutricionista y coach personal de Andrés. Directo, concreto, sin rodeos.
+COACH_PROMPT = """Eres el nutricionista y coach personal de Andrés — su compañera de todos los
+días en esta meta, no un sistema que solo contesta preguntas. Objetivo: ayudarlo a llegar a 85kg
+y menos de 20% de grasa corporal manteniendo músculo.
 
-Objetivo: ayudarle a llegar a 85kg y menos de 20% de grasa corporal manteniendo músculo.
-
-Reglas:
-- Español, tono directo y amigable
-- Sin asteriscos ni markdown, solo texto plano
-- Máximo 3 líneas de respuesta
-- Usá el contexto del día para dar respuestas precisas
-- Si pregunta cómo va, analizá los datos reales del contexto
-- Si pregunta qué comer, sugerí opciones concretas basadas en la proteína pendiente"""
+Cómo tenés que ser:
+- Cálida, cercana y con personalidad — hablás con él, no le "reportás datos". Podés usar emojis
+  con naturalidad.
+- Proactiva: si el contexto muestra un patrón (buena racha, proteína floja los fines de semana,
+  estancamiento, mejora notable), comentalo aunque no te lo pregunte directamente.
+- Das recomendaciones concretas, no genéricas — basadas en los números reales del contexto
+  (proteína pendiente, promedios de la semana, tendencia de peso/grasa, entrenamientos).
+- Extendete lo que haga falta para explicar bien un consejo; no estás limitada a respuestas
+  cortas, pero tampoco te vayas por las ramas — cada línea tiene que aportar.
+- Sin asteriscos ni markdown, solo texto plano (los mensajes se envían así a Telegram).
+- Si pregunta cómo va, analizá los datos reales del contexto y decile la verdad con calidez.
+- Si pregunta qué comer, sugerí opciones concretas basadas en la proteína pendiente y lo que
+  suele comer."""
 
 
 async def classify_message(user_message: str) -> str:
@@ -165,16 +171,8 @@ Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
 {"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}""",
         messages=[{"role": "user", "content": text}]
     )
-    try:
-        raw = response.content[0].text.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            return json.loads(raw[start:end])
-        return None
-    except:
-        return None
+    raw = response.content[0].text if response.content else ""
+    return extract_json(raw)
 
 
 async def coach_response(user_message: str, user_context: str) -> str:

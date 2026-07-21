@@ -377,7 +377,9 @@ async def weekend_message(app):
                 f"- Proteína: {protein_pct}% del objetivo\n"
                 f"- Déficit calórico acumulado: {calorie_deficit:.0f} kcal\n\n"
                 f"Tu permitido de fin de semana: {permitido}\n\n"
-                f"Si comés el permitido mandame foto y lo registro. El lunes retomamos 💪"
+                f"Si comés el permitido mandame foto y lo registro. El lunes retomamos 💪\n\n"
+                f"💡 Tip: si sentís que venís estancado o que algo no cuadra, probá /recomendacion "
+                f"para que revise tu historial y te diga si conviene ajustar tus objetivos."
             )
 
             await app.bot.send_message(chat_id=user["telegram_id"], text=msg)

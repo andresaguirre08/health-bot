@@ -1,9 +1,9 @@
 import anthropic
 import base64
-import json
 import logging
 import re
 from bot.utils.config import ANTHROPIC_API_KEY, DAILY_PROTEIN_G, DAILY_CALORIES
+from bot.utils.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,8 @@ El campo "message" tiene que seguir SIEMPRE este formato (usá \\n para saltos d
 
 *Confianza: [X]%*
 
-Respondé siempre en español, tono directo y práctico."""
+Respondé siempre en español, con calidez y cercanía — como una nutricionista que acompaña y
+celebra los aciertos, no un sistema que solo reporta números."""
 
 
 async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
@@ -101,7 +102,7 @@ async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
 
     raw_text = response.content[0].text if response.content else ""
 
-    parsed = _parse_analysis_json(raw_text)
+    parsed = extract_json(raw_text)
     if parsed:
         return {
             "response_text": parsed.get("message") or raw_text,
@@ -119,18 +120,6 @@ async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
         "carbs": extract_number(raw_text, "Carbohidratos"),
         "fat": extract_number(raw_text, "Grasas"),
     }
-
-
-def _parse_analysis_json(text: str) -> dict | None:
-    cleaned = text.replace("```json", "").replace("```", "").strip()
-    start = cleaned.find("{")
-    end = cleaned.rfind("}") + 1
-    if start < 0 or end <= start:
-        return None
-    try:
-        return json.loads(cleaned[start:end])
-    except json.JSONDecodeError:
-        return None
 
 
 def extract_number(text: str, label: str) -> float:

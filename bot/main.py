@@ -23,6 +23,7 @@ from bot.handlers.commands import (
     cmd_borrar,
     cmd_mialimentos,
     cmd_tabla,
+    cmd_recomendacion,
     handle_measurement
 )
 
@@ -50,7 +51,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  /sync — sincronizar Garmin\n"
         f"  /sync_polar — sincronizar Polar\n"
         f"  /borrar — borrar última comida\n"
-        f"  /mialimentos — ver base de alimentos\n\n"
+        f"  /mialimentos — ver base de alimentos\n"
+        f"  /recomendacion — análisis de tu dieta y ajuste de objetivos\n\n"
         f"Arrancamos 🚀"
     )
 
@@ -217,6 +219,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Ok, no borré nada.")
         return
 
+    # Confirmar ajuste de objetivos diarios (de /recomendacion)
+    if context.user_data.get("pending_goal_update"):
+        if update.message.text.upper().strip() == "SI":
+            try:
+                from bot.db.client import supabase
+                telegram_id = update.effective_user.id
+                name = update.effective_user.first_name
+                from bot.db.meals import get_or_create_user
+                user_id = await get_or_create_user(telegram_id, name)
+                new_goals = context.user_data["pending_goal_update"]
+                supabase.table("users").update(new_goals).eq("id", user_id).execute()
+                context.user_data["pending_goal_update"] = None
+                await update.message.reply_text("✅ Objetivos actualizados. Vamos con todo 💪")
+            except Exception as e:
+                await update.message.reply_text(f"❌ Error actualizando objetivos: {str(e)}")
+        else:
+            context.user_data["pending_goal_update"] = None
+            await update.message.reply_text("Ok, dejamos los objetivos como están.")
+        return
+
     try:
         telegram_id = update.effective_user.id
         name = update.effective_user.first_name
@@ -364,6 +386,7 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CommandHandler("tabla", cmd_tabla))
+    app.add_handler(CommandHandler("recomendacion", cmd_recomendacion))
 
     logger.info("Bot iniciado...")
     app.run_polling(drop_pending_updates=True)

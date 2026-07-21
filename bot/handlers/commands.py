@@ -516,3 +516,41 @@ async def cmd_tabla(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+async def cmd_recomendacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🧠 Revisando tu historial... ⏳")
+
+    try:
+        telegram_id = update.effective_user.id
+        name = update.effective_user.first_name
+        user_id = await get_or_create_user(telegram_id, name)
+
+        from bot.utils.context_builder import build_user_context
+        from bot.agents.advisor import recommend_diet_adjustment
+
+        user_context = await build_user_context(user_id)
+        recommendation = await recommend_diet_adjustment(user_context)
+
+        if not recommendation:
+            await update.message.reply_text(
+                "❌ No pude analizar tu historial en este momento. Intentá de nuevo en un rato."
+            )
+            return
+
+        await update.message.reply_text(recommendation.get("message", ""))
+
+        if recommendation.get("changed"):
+            context.user_data["pending_goal_update"] = {
+                "daily_calories": recommendation.get("calories"),
+                "daily_protein_g": recommendation.get("protein_g"),
+                "daily_carbs_g": recommendation.get("carbs_g"),
+                "daily_fat_g": recommendation.get("fat_g"),
+            }
+            await update.message.reply_text(
+                "¿Aplico estos nuevos objetivos? Respondé SI para actualizarlos, "
+                "o cualquier otra cosa para dejarlos como están."
+            )
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
