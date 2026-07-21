@@ -2,6 +2,7 @@ import anthropic
 import base64
 import json
 import logging
+import re
 from bot.utils.config import ANTHROPIC_API_KEY
 from bot.db.client import supabase
 
@@ -137,15 +138,39 @@ async def save_to_food_database(user_id: str, data: dict, caption: str = None, b
     return {"action": "created", "product": product_name, "brand": final_brand}
 
 
+def _singularize(word: str) -> str:
+    word = word.lower()
+    if word.endswith("es") and len(word) > 4:
+        return word[:-2]
+    if word.endswith("s") and len(word) > 3:
+        return word[:-1]
+    return word
+
+
 async def search_food_database(user_id: str, query: str) -> list:
+    # El ilike es solo para acotar candidatos en la query — el match real
+    # (por palabra completa, no substring) se hace en Python abajo, para que
+    # "crema" no matchee "descremada" solo porque la contiene como substring.
     result = supabase.table("food_database")\
         .select("*")\
         .eq("user_id", user_id)\
         .ilike("product_name", f"%{query}%")\
         .order("times_used", desc=True)\
-        .limit(3)\
+        .limit(20)\
         .execute()
-    return result.data if result.data else []
+
+    if not result.data:
+        return []
+
+    query_singular = _singularize(query)
+    matches = [
+        product for product in result.data
+        if any(
+            _singularize(word) == query_singular
+            for word in re.findall(r"\w+", (product.get("product_name") or "").lower())
+        )
+    ]
+    return matches[:3]
 
 
 async def get_all_products(user_id: str) -> list:
