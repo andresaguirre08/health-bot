@@ -1,10 +1,15 @@
 import anthropic
 import base64
+import json
+import logging
+import re
 from bot.utils.config import ANTHROPIC_API_KEY, DAILY_PROTEIN_G, DAILY_CALORIES
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_BASE = """Eres el nutricionista y coach personal de Andrés. Tu misión es ayudarle 
+client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+SYSTEM_PROMPT_BASE = """Eres el nutricionista y coach personal de Andrés. Tu misión es ayudarle
 a reducir grasa corporal y peso al mínimo posible mientras mantiene y aumenta masa muscular.
 
 Tenés acceso a su historial completo de alimentación, entrenamientos y composición corporal.
@@ -21,7 +26,18 @@ Cuando analices una foto de comida:
 2. Estimá cantidades en gramos considerando porciones típicas colombianas.
 3. Calculá: proteínas (g), carbohidratos (g), grasas (g) y calorías.
 4. Indicá confianza del análisis (0-100%).
-5. Respondé SIEMPRE con este formato:
+
+Respondé SOLO con JSON válido, sin texto extra, sin markdown, sin backticks, en este formato exacto:
+{
+  "calories": 450,
+  "protein_g": 35,
+  "carbs_g": 40,
+  "fat_g": 12,
+  "confidence_pct": 85,
+  "message": "texto formateado para mostrarle al usuario, ver formato abajo"
+}
+
+El campo "message" tiene que seguir SIEMPRE este formato (usá \\n para saltos de línea):
 
 🍽 *Análisis de tu comida*
 
@@ -48,7 +64,7 @@ Cuando analices una foto de comida:
 Respondé siempre en español, tono directo y práctico."""
 
 
-def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
+async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
                        user_context: str = "", calories_eaten: int = 0,
                        protein_eaten: float = 0) -> dict:
 
@@ -58,7 +74,7 @@ def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
     if user_context:
         full_system = user_context + "\n\n" + SYSTEM_PROMPT_BASE
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model="claude-opus-4-1-20250805",
         max_tokens=1024,
         system=full_system,
@@ -83,21 +99,41 @@ def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
         ],
     )
 
-    response_text = response.content[0].text
+    raw_text = response.content[0].text if response.content else ""
 
-    result = {
-        "response_text": response_text,
-        "calories": extract_number(response_text, "Calorías"),
-        "protein": extract_number(response_text, "Proteína"),
-        "carbs": extract_number(response_text, "Carbohidratos"),
-        "fat": extract_number(response_text, "Grasas"),
+    parsed = _parse_analysis_json(raw_text)
+    if parsed:
+        return {
+            "response_text": parsed.get("message") or raw_text,
+            "calories": float(parsed.get("calories") or 0),
+            "protein": float(parsed.get("protein_g") or 0),
+            "carbs": float(parsed.get("carbs_g") or 0),
+            "fat": float(parsed.get("fat_g") or 0),
+        }
+
+    logger.warning(f"analyze_food_photo: JSON inválido de Claude, usando fallback de texto: {raw_text[:200]!r}")
+    return {
+        "response_text": raw_text,
+        "calories": extract_number(raw_text, "Calorías"),
+        "protein": extract_number(raw_text, "Proteína"),
+        "carbs": extract_number(raw_text, "Carbohidratos"),
+        "fat": extract_number(raw_text, "Grasas"),
     }
 
-    return result
+
+def _parse_analysis_json(text: str) -> dict | None:
+    cleaned = text.replace("```json", "").replace("```", "").strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}") + 1
+    if start < 0 or end <= start:
+        return None
+    try:
+        return json.loads(cleaned[start:end])
+    except json.JSONDecodeError:
+        return None
 
 
 def extract_number(text: str, label: str) -> float:
-    import re
     pattern = rf"{label}[:\s*]+([0-9]+(?:\.[0-9]+)?)"
     match = re.search(pattern, text)
     if match:

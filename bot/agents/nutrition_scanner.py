@@ -1,10 +1,13 @@
 import anthropic
 import base64
 import json
+import logging
 from bot.utils.config import ANTHROPIC_API_KEY
 from bot.db.client import supabase
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+logger = logging.getLogger(__name__)
+
+client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 SCAN_PROMPT = """Analizá esta imagen. Puede ser una tabla nutricional de un producto alimenticio.
 
@@ -33,7 +36,7 @@ Sin texto extra, sin markdown, solo JSON."""
 async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model="claude-opus-4-1-20250805",
         max_tokens=400,
         messages=[{
@@ -55,10 +58,15 @@ async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg"
         }]
     )
 
+    if not response.content or not getattr(response.content[0], "text", None):
+        logger.warning("scan_nutrition_label: respuesta de Claude sin contenido de texto")
+        return {"is_nutrition_label": False}
+
     text = response.content[0].text.strip()
     try:
         return json.loads(text)
-    except:
+    except json.JSONDecodeError:
+        logger.warning(f"scan_nutrition_label: JSON inválido de Claude: {text[:200]!r}")
         return {"is_nutrition_label": False}
 
 

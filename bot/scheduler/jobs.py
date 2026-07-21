@@ -85,33 +85,47 @@ async def get_user_info():
 async def remind_vitamins(app):
     try:
         users = await get_user_info()
-        for user in users:
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios para recordatorio vitaminas: {e}")
+        return
+
+    for user in users:
+        try:
             await app.bot.send_message(
                 chat_id=user["telegram_id"],
                 text="💊 Recordatorio: tomá tus vitaminas\n- Vitamina D\n- Omega 3\n- Zinc"
             )
-    except Exception as e:
-        logger.error(f"Error recordatorio vitaminas: {e}")
+        except Exception as e:
+            logger.error(f"Error recordatorio vitaminas para usuario {user.get('id')}: {e}")
 
 
 async def remind_creatine(app):
     try:
         users = await get_user_info()
-        for user in users:
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios para recordatorio creatina: {e}")
+        return
+
+    for user in users:
+        try:
             await app.bot.send_message(
                 chat_id=user["telegram_id"],
                 text="💪 Recordatorio: tomá tu creatina (5g)\nMejor momento: después del entreno o con la comida."
             )
-    except Exception as e:
-        logger.error(f"Error recordatorio creatina: {e}")
+        except Exception as e:
+            logger.error(f"Error recordatorio creatina para usuario {user.get('id')}: {e}")
 
 
 async def check_protein_midday(app):
+    from bot.db.client import supabase
     try:
-        from bot.db.client import supabase
         users = await get_user_info()
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios para check proteína mediodía: {e}")
+        return
 
-        for user in users:
+    for user in users:
+        try:
             today = get_today_bogota()
             meals = supabase.table("meals")\
                 .select("protein_g")\
@@ -121,7 +135,7 @@ async def check_protein_midday(app):
                 .execute()
 
             protein_eaten = sum(float(m.get("protein_g") or 0) for m in meals.data)
-            protein_goal = user.get("daily_protein_g", 180)
+            protein_goal = user.get("daily_protein_g") or 180
             protein_remaining = max(0, protein_goal - protein_eaten)
             protein_pct = round((protein_eaten / protein_goal) * 100) if protein_goal else 0
 
@@ -138,16 +152,20 @@ async def check_protein_midday(app):
                 )
                 await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
 
-    except Exception as e:
-        logger.error(f"Error check proteína mediodía: {e}")
+        except Exception as e:
+            logger.error(f"Error check proteína mediodía para usuario {user.get('id')}: {e}")
 
 
 async def check_protein_evening(app):
+    from bot.db.client import supabase
     try:
-        from bot.db.client import supabase
         users = await get_user_info()
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios para check proteína noche: {e}")
+        return
 
-        for user in users:
+    for user in users:
+        try:
             today = get_today_bogota()
             meals = supabase.table("meals")\
                 .select("protein_g")\
@@ -157,7 +175,7 @@ async def check_protein_evening(app):
                 .execute()
 
             protein_eaten = sum(float(m.get("protein_g") or 0) for m in meals.data)
-            protein_goal = user.get("daily_protein_g", 180)
+            protein_goal = user.get("daily_protein_g") or 180
             protein_remaining = max(0, protein_goal - protein_eaten)
             protein_pct = round((protein_eaten / protein_goal) * 100) if protein_goal else 0
 
@@ -170,20 +188,26 @@ async def check_protein_evening(app):
                 )
                 await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
 
-    except Exception as e:
-        logger.error(f"Error check proteína noche: {e}")
+        except Exception as e:
+            logger.error(f"Error check proteína noche para usuario {user.get('id')}: {e}")
 
 
 async def daily_summary(app):
-    try:
-        from bot.db.client import supabase
-        from bot.utils.config import ANTHROPIC_API_KEY
-        import anthropic
+    from bot.db.client import supabase
+    from bot.utils.config import ANTHROPIC_API_KEY
+    import anthropic
 
+    claude = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+    try:
         today = get_today_bogota()
         users = await get_user_info()
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios para resumen diario: {e}")
+        return
 
-        for user in users:
+    for user in users:
+        try:
             meals = supabase.table("meals")\
                 .select("calories, protein_g, carbs_g, fat_g, meal_type")\
                 .eq("user_id", user["id"])\
@@ -211,8 +235,8 @@ async def daily_summary(app):
             total_burned = sum(w.get("calories_burned") or 0 for w in workouts.data)
             net_calories = total_calories - total_burned
 
-            protein_goal = user.get("daily_protein_g", 180)
-            calorie_goal = user.get("daily_calories", 2000)
+            protein_goal = user.get("daily_protein_g") or 180
+            calorie_goal = user.get("daily_calories") or 2000
             protein_pct = round((total_protein / protein_goal) * 100) if protein_goal else 0
 
             current_weight = last_measurement.data[0].get("weight_kg") if last_measurement.data else None
@@ -225,7 +249,6 @@ async def daily_summary(app):
             else:
                 workout_text = "- Sin entrenamientos registrados hoy\n"
 
-            claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
             prompt = f"""Andrés tuvo este día:
 - Calorías consumidas: {total_calories} / {calorie_goal} kcal
 - Proteína: {total_protein:.0f}g / {protein_goal}g ({protein_pct}%)
@@ -238,7 +261,7 @@ async def daily_summary(app):
 
 Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa. Sin asteriscos ni markdown. Tono directo y personal."""
 
-            feedback_response = claude.messages.create(
+            feedback_response = await claude.messages.create(
                 model="claude-opus-4-1-20250805",
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}]
@@ -264,17 +287,21 @@ Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede m
 
             await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
 
-    except Exception as e:
-        logger.error(f"Error resumen diario: {e}")
+        except Exception as e:
+            logger.error(f"Error resumen diario para usuario {user.get('id')}: {e}")
 
 
 async def sync_garmin_auto(app):
-    try:
-        from bot.db.client import supabase
-        from bot.integrations.garmin import sync_all
+    from bot.integrations.garmin import sync_all
 
+    try:
         users = await get_user_info()
-        for user in users:
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios para sync Garmin automático: {e}")
+        return
+
+    for user in users:
+        try:
             results = await sync_all(user["id"])
             if results.get("weight") or results.get("workouts"):
                 msg = "🔄 Sincronización automática Garmin\n"
@@ -288,20 +315,24 @@ async def sync_garmin_auto(app):
                     msg += f"🏋 {len(results['workouts'])} entreno(s) descargado(s)\n"
                 await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
 
-    except Exception as e:
-        logger.error(f"Error sync Garmin automático: {e}")
+        except Exception as e:
+            logger.error(f"Error sync Garmin automático para usuario {user.get('id')}: {e}")
 
 
 async def weekend_message(app):
+    from bot.db.client import supabase
+
+    today = get_today_bogota()
+    week_ago = (datetime.now(BOGOTA_TZ) - timedelta(days=5)).strftime("%Y-%m-%d")
+
     try:
-        from bot.db.client import supabase
-
-        today = get_today_bogota()
-        week_ago = (datetime.now(BOGOTA_TZ) - timedelta(days=5)).strftime("%Y-%m-%d")
-
         users = await get_user_info()
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios para mensaje fin de semana: {e}")
+        return
 
-        for user in users:
+    for user in users:
+        try:
             meals = supabase.table("meals")\
                 .select("calories, protein_g")\
                 .eq("user_id", user["id"])\
@@ -320,8 +351,8 @@ async def weekend_message(app):
             total_burned = sum(w.get("calories_burned") or 0 for w in workouts.data)
             workout_count = len(workouts.data)
 
-            calorie_goal_week = user.get("daily_calories", 2000) * 5
-            protein_goal_week = user.get("daily_protein_g", 180) * 5
+            calorie_goal_week = (user.get("daily_calories") or 2000) * 5
+            protein_goal_week = (user.get("daily_protein_g") or 180) * 5
             calorie_deficit = calorie_goal_week - total_calories + total_burned
             protein_pct = round((total_protein / protein_goal_week) * 100) if protein_goal_week else 0
 
@@ -351,8 +382,8 @@ async def weekend_message(app):
 
             await app.bot.send_message(chat_id=user["telegram_id"], text=msg)
 
-    except Exception as e:
-        logger.error(f"Error mensaje fin de semana: {e}")
+        except Exception as e:
+            logger.error(f"Error mensaje fin de semana para usuario {user.get('id')}: {e}")
 
 
 async def check_anthropic_usage(app):
@@ -384,15 +415,18 @@ async def check_anthropic_usage(app):
             if pct >= 70:
                 users = await get_user_info()
                 for user in users:
-                    await app.bot.send_message(
-                        chat_id=user["telegram_id"],
-                        text=(
-                            f"⚠️ Alerta de tokens Anthropic\n\n"
-                            f"Gastaste ${total_cost:.2f} de ${limit:.2f} este mes ({pct:.0f}%)\n"
-                            f"Te quedan ${limit - total_cost:.2f}\n\n"
-                            f"Revisá en console.anthropic.com"
+                    try:
+                        await app.bot.send_message(
+                            chat_id=user["telegram_id"],
+                            text=(
+                                f"⚠️ Alerta de tokens Anthropic\n\n"
+                                f"Gastaste ${total_cost:.2f} de ${limit:.2f} este mes ({pct:.0f}%)\n"
+                                f"Te quedan ${limit - total_cost:.2f}\n\n"
+                                f"Revisá en console.anthropic.com"
+                            )
                         )
-                    )
+                    except Exception as e:
+                        logger.error(f"Error alerta de tokens para usuario {user.get('id')}: {e}")
 
     except Exception as e:
         logger.error(f"Error chequeando uso Anthropic: {e}")

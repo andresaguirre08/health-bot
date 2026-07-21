@@ -1,21 +1,24 @@
+import asyncio
 from datetime import date, timedelta
 from garminconnect import Garmin
 from bot.db.client import supabase
 from bot.utils.config import GARMIN_EMAIL, GARMIN_PASSWORD
 
 
-def get_garmin_client():
-    import time
+def _login_garmin_sync() -> Garmin:
     client = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
+    client.login()
+    return client
+
+
+async def get_garmin_client() -> Garmin:
     try:
-        client.login()
+        return await asyncio.to_thread(_login_garmin_sync)
     except Exception as e:
         if "429" in str(e):
-            time.sleep(60)
-            client.login()
-        else:
-            raise
-    return client
+            await asyncio.sleep(60)
+            return await asyncio.to_thread(_login_garmin_sync)
+        raise
 
 
 async def sync_weight(user_id: str, target_date: str = None):
@@ -23,8 +26,8 @@ async def sync_weight(user_id: str, target_date: str = None):
         target_date = date.today().isoformat()
 
     try:
-        client = get_garmin_client()
-        data = client.get_body_composition(target_date)
+        client = await get_garmin_client()
+        data = await asyncio.to_thread(client.get_body_composition, target_date)
 
         if not data or not data.get("totalAverage"):
             return None
@@ -92,8 +95,8 @@ async def sync_workouts(user_id: str, target_date: str = None, days_back: int = 
     start_date = (date.today() - timedelta(days=days_back)).isoformat()
 
     try:
-        client = get_garmin_client()
-        activities = client.get_activities_by_date(start_date, end_date)
+        client = await get_garmin_client()
+        activities = await asyncio.to_thread(client.get_activities_by_date, start_date, end_date)
 
         if not activities:
             return []

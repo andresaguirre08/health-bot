@@ -76,7 +76,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         extra_context = f"El usuario dice que esto es: {caption}" if caption else ""
 
-        result = analyze_food_photo(
+        result = await analyze_food_photo(
             image_bytes=bytes(image_bytes),
             mime_type="image/jpeg",
             user_context=user_context + extra_context,
