@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import pytz
 from bot.db.client import supabase
+from bot.db.meals import MEAL_TYPE_LABELS
 
 BOGOTA_TZ = pytz.timezone("America/Bogota")
 
@@ -39,10 +40,11 @@ async def build_user_context(user_id: str) -> str:
 
     # Comidas de hoy
     today_meals = supabase.table("meals")\
-    .select("calories, protein_g, carbs_g, fat_g, description, logged_at")\
+    .select("calories, protein_g, carbs_g, fat_g, description, meal_type, logged_at")\
     .eq("user_id", user_id)\
     .gte("logged_at", today + "T00:00:00-05:00")\
     .lte("logged_at", today + "T23:59:59-05:00")\
+    .order("logged_at", desc=False)\
     .execute()
 
     # Promedio nutricional últimos 7 días
@@ -65,6 +67,20 @@ async def build_user_context(user_id: str) -> str:
     today_carbs = sum(float(m.get("carbs_g") or 0) for m in today_meals.data)
     today_fat = sum(float(m.get("fat_g") or 0) for m in today_meals.data)
     today_meal_count = len(today_meals.data)
+
+    # Listado real de las comidas de hoy — sin esto la IA no tiene forma de
+    # saber qué comió puntualmente y termina inventando platos plausibles.
+    today_meals_list = ""
+    if today_meals.data:
+        for m in today_meals.data:
+            label = MEAL_TYPE_LABELS.get(m.get("meal_type", ""), m.get("meal_type", "comida"))
+            hora = (m.get("logged_at") or "")[11:16]
+            desc = m.get("description") or "sin descripción"
+            cal = m.get("calories") or 0
+            prot = float(m.get("protein_g") or 0)
+            today_meals_list += f"- {label} ({hora}): {desc} — {cal} kcal, {prot:.0f}g prot\n"
+    else:
+        today_meals_list = "- (sin comidas registradas todavía hoy)\n"
 
     # Calcular promedios semanales
     if week_meals.data:
@@ -132,7 +148,7 @@ OBJETIVOS DIARIOS:
 
 HOY ({today}):
 - Comidas registradas: {today_meal_count}
-- Calorías consumidas: {today_calories} / {u.get('daily_calories')} kcal
+{today_meals_list}- Calorías consumidas: {today_calories} / {u.get('daily_calories')} kcal
 - Proteína consumida: {today_protein:.1f}g / {u.get('daily_protein_g')}g ({protein_pct}%)
 - Carbohidratos: {today_carbs:.1f}g
 - Grasas: {today_fat:.1f}g

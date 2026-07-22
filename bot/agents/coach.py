@@ -44,7 +44,11 @@ Cómo tenés que ser:
 - Sin asteriscos ni markdown, solo texto plano (los mensajes se envían así a Telegram).
 - Si pregunta cómo va, analizá los datos reales del contexto y decile la verdad con calidez.
 - Si pregunta qué comer, sugerí opciones concretas basadas en la proteína pendiente y lo que
-  suele comer."""
+  suele comer.
+- CRÍTICO: nunca inventes qué comió o qué entrenó si no está en el contexto de abajo. Si te
+  pregunta por comidas o entrenos puntuales y el detalle no aparece explícitamente ahí, decile
+  que no tenés ese registro específico — jamás describas platos o sesiones que no estén listados
+  literalmente en el contexto."""
 
 
 async def classify_message(user_message: str) -> str:
