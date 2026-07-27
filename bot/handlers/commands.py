@@ -33,11 +33,17 @@ async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_burned = sum(w.get("calories_burned") or 0 for w in workouts.data)
         net_calories = totals["calories"] - total_burned
 
-        protein_goal = u.get("daily_protein_g", 180)
-        calorie_goal = u.get("daily_calories", 2000)
+        protein_goal = u.get("daily_protein_g") or 180
+        calorie_goal = u.get("daily_calories") or 2000
+        carbs_goal = u.get("daily_carbs_g") or 150
+        fat_goal = u.get("daily_fat_g") or 60
+
         protein_pct = round((totals["protein"] / protein_goal) * 100) if protein_goal else 0
         calorie_pct = round((totals["calories"] / calorie_goal) * 100) if calorie_goal else 0
-        protein_remaining = max(0, protein_goal - totals["protein"])
+        carbs_pct = round((totals["carbs"] / carbs_goal) * 100) if carbs_goal else 0
+        fat_pct = round((totals["fat"] / fat_goal) * 100) if fat_goal else 0
+
+        protein_remaining = max(0.0, protein_goal - totals["protein"])
 
         def progress_bar(pct):
             filled = min(int(pct / 10), 10)
@@ -60,8 +66,10 @@ async def cmd_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
   {progress_bar(calorie_pct)}
 - 💪 Proteína: {totals['protein']:.1f} / {protein_goal}g ({protein_pct}%)
   {progress_bar(protein_pct)}
-- 🍚 Carbohidratos: {totals['carbs']:.1f}g
-- 🥑 Grasas: {totals['fat']:.1f}g
+- 🍚 Carbohidratos: {totals['carbs']:.1f} / {carbs_goal}g ({carbs_pct}%)
+  {progress_bar(carbs_pct)}
+- 🥑 Grasas: {totals['fat']:.1f} / {fat_goal}g ({fat_pct}%)
+  {progress_bar(fat_pct)}
 {workout_section}
 *Proteína pendiente: {protein_remaining:.1f}g*
 {'✅ Objetivo de proteína cumplido!' if protein_remaining == 0 else f'⚡ Necesitás {protein_remaining:.1f}g más de proteína hoy'}"""

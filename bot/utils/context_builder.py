@@ -76,9 +76,9 @@ async def build_user_context(user_id: str) -> str:
             label = MEAL_TYPE_LABELS.get(m.get("meal_type", ""), m.get("meal_type", "comida"))
             hora = (m.get("logged_at") or "")[11:16]
             desc = m.get("description") or "sin descripción"
-            cal = m.get("calories") or 0
-            prot = float(m.get("protein_g") or 0)
-            today_meals_list += f"- {label} ({hora}): {desc} — {cal} kcal, {prot:.0f}g prot\n"
+            carbs = float(m.get("carbs_g") or 0)
+            fat = float(m.get("fat_g") or 0)
+            today_meals_list += f"- {label} ({hora}): {desc} — {cal} kcal, {prot:.1f}g prot, {carbs:.1f}g carbs, {fat:.1f}g grasas\n"
     else:
         today_meals_list = "- (sin comidas registradas todavía hoy)\n"
 
