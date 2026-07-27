@@ -56,7 +56,7 @@ docker build -t health-bot:latest .
 # Crear archivo .env en el directorio raíz con todas las variables
 cat > .env << 'EOF'
 TELEGRAM_TOKEN=your_token
-ANTHROPIC_API_KEY=your_key
+GEMINI_API_KEY=your_key
 SUPABASE_URL=your_url
 SUPABASE_KEY=your_key
 # ... resto de variables
@@ -99,7 +99,7 @@ heroku create health-bot
 ### 2. Configurar variables de entorno
 ```bash
 heroku config:set TELEGRAM_TOKEN=xxx
-heroku config:set ANTHROPIC_API_KEY=xxx
+heroku config:set GEMINI_API_KEY=xxx
 # ... resto de variables
 ```
 
@@ -154,10 +154,10 @@ docker run -d --name health-bot --env-file .env health-bot:latest
 2. Ver logs: `docker logs health-bot` o `heroku logs --tail`
 3. Validar conexión a Supabase
 
-### Error en Claude API
-1. Verificar ANTHROPIC_API_KEY válida
-2. Chequear cuota disponible en Anthropic
-3. Revisar modelo configurado en código
+### Error en Gemini API
+1. Verificar GEMINI_API_KEY válida
+2. Chequear cuota disponible en Google AI Studio
+3. Revisar modelo configurado en código (gemini-2.5-flash)
 
 ### Database connection error
 1. Verificar SUPABASE_URL y SUPABASE_KEY

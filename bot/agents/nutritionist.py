@@ -1,13 +1,13 @@
-import anthropic
-import base64
+from google import genai
+from google.genai import types
 import logging
 import re
-from bot.utils.config import ANTHROPIC_API_KEY, DAILY_PROTEIN_G, DAILY_CALORIES
+from bot.utils.config import GEMINI_API_KEY, DAILY_PROTEIN_G, DAILY_CALORIES
 from bot.utils.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
-client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT_BASE = """Eres el nutricionista y coach personal de Andrés. Tu misión es ayudarle
 a reducir grasa corporal y peso al mínimo posible mientras mantiene y aumenta masa muscular.
@@ -69,38 +69,22 @@ async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
                        user_context: str = "", calories_eaten: int = 0,
                        protein_eaten: float = 0) -> dict:
 
-    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
     full_system = SYSTEM_PROMPT_BASE
     if user_context:
         full_system = user_context + "\n\n" + SYSTEM_PROMPT_BASE
 
-    response = await client.messages.create(
-        model="claude-opus-4-1-20250805",
-        max_tokens=1024,
-        system=full_system,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime_type,
-                            "data": image_b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": "Analizá esta foto de mi comida."
-                    }
-                ],
-            }
-        ],
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[image_part, "Analizá esta foto de mi comida."],
+        config=types.GenerateContentConfig(
+            system_instruction=full_system,
+            max_output_tokens=1024,
+        )
     )
 
-    raw_text = response.content[0].text if response.content else ""
+    raw_text = response.text or ""
 
     parsed = extract_json(raw_text)
     if parsed:
@@ -112,7 +96,7 @@ async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
             "fat": float(parsed.get("fat_g") or 0),
         }
 
-    logger.warning(f"analyze_food_photo: JSON inválido de Claude, usando fallback de texto: {raw_text[:200]!r}")
+    logger.warning(f"analyze_food_photo: JSON inválido de Gemini, usando fallback de texto: {raw_text[:200]!r}")
     return {
         "response_text": raw_text,
         "calories": extract_number(raw_text, "Calorías"),

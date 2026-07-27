@@ -26,7 +26,7 @@ Un bot de Telegram impulsado por IA que actúa como tu entrenador personal de nu
 - **Automático**: Sync cada 6 horas
 
 ### 🤖 IA Inteligente
-- **Claude AI (Anthropic)**: Asesoría nutricional y fitness personalizada
+- **Google Gemini AI**: Asesoría nutricional y fitness personalizada (`gemini-2.5-flash`)
 - **Contexto Adaptativo**: Recomienda basado en tu día, macros pendientes, objetivos
 - **Lenguaje Natural**: Entiende descripciones complejas de comidas
 - **Groq Whisper**: Transcripción de audio en tiempo real
@@ -36,7 +36,7 @@ Un bot de Telegram impulsado por IA que actúa como tu entrenador personal de nu
 ### Requisitos
 - Python 3.11+
 - Cuenta en Telegram
-- API keys: Anthropic, Supabase, Groq
+- API keys: Google Gemini, Supabase, Groq
 - Opcional: Garmin/Polar para sincronización
 
 ### Instalación Local
@@ -119,8 +119,8 @@ Bot: [Análisis basado en tus macros restantes, objetivos, y progreso]
 # Telegram
 TELEGRAM_TOKEN=your_token_here
 
-# Claude AI
-ANTHROPIC_API_KEY=your_key_here
+# Google Gemini AI
+GEMINI_API_KEY=your_key_here
 
 # Supabase (Database)
 SUPABASE_URL=your_url_here
@@ -207,10 +207,10 @@ python -m pytest tests/
 2. Ver logs: `docker logs health-bot`
 3. Validar conexión a Supabase
 
-### Error "Model not found"
-- Verificar que `ANTHROPIC_API_KEY` es válido
-- El modelo actualmente es `claude-opus-4-1-20250805`
-- Revisar cuota disponible en Anthropic
+### Error en la API de IA
+- Verificar que `GEMINI_API_KEY` es válido
+- El modelo utilizado es `gemini-2.5-flash`
+- Revisar cuota en Google AI Studio
 
 ### Errores de base de datos
 - Validar `SUPABASE_URL` y `SUPABASE_KEY`
@@ -239,7 +239,7 @@ MIT License - mira [LICENSE](LICENSE)
 ## 🙏 Agradecimientos
 
 - Telegram Bot API
-- Anthropic Claude AI
+- Google Gemini AI
 - Supabase
 - Groq API
 - Garmin Connect

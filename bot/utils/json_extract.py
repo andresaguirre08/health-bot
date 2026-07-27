@@ -2,7 +2,7 @@ import json
 
 
 def extract_json(text: str) -> dict | None:
-    """Extrae el primer objeto JSON de un texto de Claude, tolerando backticks/markdown."""
+    """Extrae el primer objeto JSON de un texto de la IA, tolerando backticks/markdown."""
     if not text:
         return None
     cleaned = text.replace("```json", "").replace("```", "").strip()

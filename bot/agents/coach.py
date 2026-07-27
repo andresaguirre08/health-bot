@@ -1,11 +1,12 @@
-import anthropic
-from bot.utils.config import ANTHROPIC_API_KEY
+from google import genai
+from google.genai import types
+from bot.utils.config import GEMINI_API_KEY
 from bot.db.client import supabase
 from bot.utils.json_extract import extract_json
 from datetime import datetime
 import pytz
 
-client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 BOGOTA_TZ = pytz.timezone("America/Bogota")
 
 
@@ -52,13 +53,15 @@ Cómo tenés que ser:
 
 
 async def classify_message(user_message: str) -> str:
-    response = await client.messages.create(
-        model="claude-opus-4-1-20250805",
-        max_tokens=10,
-        system=CLASSIFY_PROMPT,
-        messages=[{"role": "user", "content": user_message}]
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_message,
+        config=types.GenerateContentConfig(
+            system_instruction=CLASSIFY_PROMPT,
+            max_output_tokens=10,
+        )
     )
-    result = response.content[0].text.strip().upper()
+    result = (response.text or "").strip().upper()
     return "FOOD" if "FOOD" in result else "CHAT"
 
 
@@ -167,27 +170,32 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
 
 
 async def _estimate_with_ai(text: str) -> dict | None:
-    response = await client.messages.create(
-        model="claude-opus-4-1-20250805",
-        max_tokens=150,
-        system="""Sos un nutricionista. Estimá los macros de esta comida.
+    system_prompt = """Sos un nutricionista. Estimá los macros de esta comida.
 Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
-{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}""",
-        messages=[{"role": "user", "content": text}]
+{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}"""
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=text,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=150,
+        )
     )
-    raw = response.content[0].text if response.content else ""
+    raw = response.text or ""
     return extract_json(raw)
 
 
 async def coach_response(user_message: str, user_context: str) -> str:
     full_system = user_context + "\n\n" + COACH_PROMPT if user_context else COACH_PROMPT
-    response = await client.messages.create(
-        model="claude-opus-4-1-20250805",
-        max_tokens=300,
-        system=full_system,
-        messages=[{"role": "user", "content": user_message}]
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_message,
+        config=types.GenerateContentConfig(
+            system_instruction=full_system,
+            max_output_tokens=500,
+        )
     )
-    return response.content[0].text.strip()
+    return (response.text or "").strip()
 
 
 async def process_message(user_message: str, user_context: str, user_id: str = None) -> dict:

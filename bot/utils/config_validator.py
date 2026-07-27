@@ -8,7 +8,7 @@ import sys
 from typing import List, Tuple
 from bot.utils.config import (
     TELEGRAM_TOKEN,
-    ANTHROPIC_API_KEY,
+    GEMINI_API_KEY,
     SUPABASE_URL,
     SUPABASE_KEY,
     GARMIN_EMAIL,
@@ -31,7 +31,7 @@ def validate_config() -> Tuple[bool, List[str]]:
     # Variables críticas (sin estas no funciona el bot)
     critical_vars = {
         "TELEGRAM_TOKEN": TELEGRAM_TOKEN,
-        "ANTHROPIC_API_KEY": ANTHROPIC_API_KEY,
+        "GEMINI_API_KEY": GEMINI_API_KEY,
         "SUPABASE_URL": SUPABASE_URL,
         "SUPABASE_KEY": SUPABASE_KEY,
         "GROQ_API_KEY": GROQ_API_KEY,

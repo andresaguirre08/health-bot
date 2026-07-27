@@ -1,14 +1,15 @@
-import anthropic
-import base64
+from google import genai
+from google.genai import types
 import json
 import logging
 import re
-from bot.utils.config import ANTHROPIC_API_KEY
+from bot.utils.config import GEMINI_API_KEY
 from bot.db.client import supabase
+from bot.utils.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
-client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 SCAN_PROMPT = """Analizá esta imagen. Puede ser una tabla nutricional de un producto alimenticio.
 
@@ -35,40 +36,26 @@ Sin texto extra, sin markdown, solo JSON."""
 
 
 async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
-    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
-    response = await client.messages.create(
-        model="claude-opus-4-1-20250805",
-        max_tokens=400,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": mime_type,
-                        "data": image_b64
-                    }
-                },
-                {
-                    "type": "text",
-                    "text": SCAN_PROMPT
-                }
-            ]
-        }]
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[image_part, SCAN_PROMPT],
+        config=types.GenerateContentConfig(
+            max_output_tokens=400,
+        )
     )
 
-    if not response.content or not getattr(response.content[0], "text", None):
-        logger.warning("scan_nutrition_label: respuesta de Claude sin contenido de texto")
+    if not response.text:
+        logger.warning("scan_nutrition_label: respuesta de Gemini sin contenido de texto")
         return {"is_nutrition_label": False}
 
-    text = response.content[0].text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        logger.warning(f"scan_nutrition_label: JSON inválido de Claude: {text[:200]!r}")
-        return {"is_nutrition_label": False}
+    text = response.text.strip()
+    parsed = extract_json(text)
+    if parsed:
+        return parsed
+    logger.warning(f"scan_nutrition_label: JSON inválido de Gemini: {text[:200]!r}")
+    return {"is_nutrition_label": False}
 
 
 async def save_to_food_database(user_id: str, data: dict, caption: str = None, brand: str = None) -> dict:

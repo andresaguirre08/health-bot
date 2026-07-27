@@ -1,11 +1,12 @@
-import anthropic
+from google import genai
+from google.genai import types
 import logging
-from bot.utils.config import ANTHROPIC_API_KEY
+from bot.utils.config import GEMINI_API_KEY
 from bot.utils.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
-client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 ADVISOR_PROMPT = """Sos la nutricionista personal de Andrés. Te paso su contexto completo:
 perfil, objetivos diarios actuales, composición corporal y su tendencia, promedios de
@@ -43,18 +44,20 @@ calidez y cercanía, no como un reporte técnico. Máximo 6 líneas."""
 
 
 async def recommend_diet_adjustment(user_context: str) -> dict | None:
-    response = await client.messages.create(
-        model="claude-opus-4-1-20250805",
-        max_tokens=700,
-        system=ADVISOR_PROMPT,
-        messages=[{"role": "user", "content": user_context}]
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_context,
+        config=types.GenerateContentConfig(
+            system_instruction=ADVISOR_PROMPT,
+            max_output_tokens=700,
+        )
     )
 
-    raw_text = response.content[0].text if response.content else ""
+    raw_text = response.text if response.text else ""
     parsed = extract_json(raw_text)
 
     if not parsed:
-        logger.warning(f"recommend_diet_adjustment: JSON inválido de Claude: {raw_text[:200]!r}")
+        logger.warning(f"recommend_diet_adjustment: JSON inválido de Gemini: {raw_text[:200]!r}")
         return None
 
     return parsed

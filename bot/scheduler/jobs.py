@@ -64,13 +64,6 @@ def start_scheduler(app):
         id="weekend_message",
         replace_existing=True
     )
-    scheduler.add_job(
-        check_anthropic_usage,
-        CronTrigger(hour=9, minute=0, timezone="America/Bogota"),
-        args=[app],
-        id="check_anthropic_usage",
-        replace_existing=True
-    )
 
     scheduler.start()
     logger.info("Scheduler iniciado con zona horaria America/Bogota")
@@ -194,10 +187,10 @@ async def check_protein_evening(app):
 
 async def daily_summary(app):
     from bot.db.client import supabase
-    from bot.utils.config import ANTHROPIC_API_KEY
-    import anthropic
+    from bot.utils.config import GEMINI_API_KEY
+    from google import genai
 
-    claude = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
     try:
         today = get_today_bogota()
@@ -261,12 +254,11 @@ async def daily_summary(app):
 
 Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa. Sin asteriscos ni markdown. Tono directo y personal."""
 
-            feedback_response = await claude.messages.create(
-                model="claude-opus-4-1-20250805",
-                max_tokens=200,
-                messages=[{"role": "user", "content": prompt}]
+            feedback_response = await ai_client.aio.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
             )
-            feedback = feedback_response.content[0].text
+            feedback = (feedback_response.text or "").strip()
 
             msg = (
                 f"📊 Resumen del día — {today}\n\n"
@@ -388,47 +380,5 @@ async def weekend_message(app):
             logger.error(f"Error mensaje fin de semana para usuario {user.get('id')}: {e}")
 
 
-async def check_anthropic_usage(app):
-    try:
-        import httpx
-        from bot.utils.config import ANTHROPIC_API_KEY
-
-        now = datetime.now(BOGOTA_TZ)
-        year = now.year
-        month = now.month
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://api.anthropic.com/v1/usage?year={year}&month={month}",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01"
-                }
-            )
-
-            if response.status_code != 200:
-                return
-
-            data = response.json()
-            total_cost = data.get("total_cost_usd", 0)
-            limit = 5.0
-            pct = (total_cost / limit) * 100
-
-            if pct >= 70:
-                users = await get_user_info()
-                for user in users:
-                    try:
-                        await app.bot.send_message(
-                            chat_id=user["telegram_id"],
-                            text=(
-                                f"⚠️ Alerta de tokens Anthropic\n\n"
-                                f"Gastaste ${total_cost:.2f} de ${limit:.2f} este mes ({pct:.0f}%)\n"
-                                f"Te quedan ${limit - total_cost:.2f}\n\n"
-                                f"Revisá en console.anthropic.com"
-                            )
-                        )
-                    except Exception as e:
-                        logger.error(f"Error alerta de tokens para usuario {user.get('id')}: {e}")
-
-    except Exception as e:
-        logger.error(f"Error chequeando uso Anthropic: {e}")
+async def check_gemini_usage(app):
+    pass
