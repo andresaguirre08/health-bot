@@ -26,7 +26,7 @@ Un bot de Telegram impulsado por IA que actúa como tu entrenador personal de nu
 - **Automático**: Sync cada 6 horas
 
 ### 🤖 IA Inteligente
-- **Google Gemini AI**: Asesoría nutricional y fitness personalizada (`gemini-2.5-flash`)
+- **Google Gemini AI**: Asesoría nutricional y fitness personalizada (`gemini-3.5-flash`)
 - **Contexto Adaptativo**: Recomienda basado en tu día, macros pendientes, objetivos
 - **Lenguaje Natural**: Entiende descripciones complejas de comidas
 - **Groq Whisper**: Transcripción de audio en tiempo real
@@ -209,7 +209,7 @@ python -m pytest tests/
 
 ### Error en la API de IA
 - Verificar que `GEMINI_API_KEY` es válido
-- El modelo utilizado es `gemini-2.5-flash`
+- El modelo utilizado es `gemini-3.5-flash`
 - Revisar cuota en Google AI Studio
 
 ### Errores de base de datos

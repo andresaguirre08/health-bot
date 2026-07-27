@@ -157,7 +157,7 @@ docker run -d --name health-bot --env-file .env health-bot:latest
 ### Error en Gemini API
 1. Verificar GEMINI_API_KEY válida
 2. Chequear cuota disponible en Google AI Studio
-3. Revisar modelo configurado en código (gemini-2.5-flash)
+3. Revisar modelo configurado en código (gemini-3.5-flash)
 
 ### Database connection error
 1. Verificar SUPABASE_URL y SUPABASE_KEY

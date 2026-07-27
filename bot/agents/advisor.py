@@ -45,7 +45,7 @@ calidez y cercanía, no como un reporte técnico. Máximo 6 líneas."""
 
 async def recommend_diet_adjustment(user_context: str) -> dict | None:
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=user_context,
         config=types.GenerateContentConfig(
             system_instruction=ADVISOR_PROMPT,

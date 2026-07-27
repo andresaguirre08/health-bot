@@ -76,7 +76,7 @@ async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
         full_system = user_context + "\n\n" + SYSTEM_PROMPT_BASE
 
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=[image_part, "Analizá esta foto de mi comida."],
         config=types.GenerateContentConfig(
             system_instruction=full_system,

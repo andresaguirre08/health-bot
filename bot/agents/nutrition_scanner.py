@@ -39,7 +39,7 @@ async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg"
     image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=[image_part, SCAN_PROMPT],
         config=types.GenerateContentConfig(
             max_output_tokens=400,

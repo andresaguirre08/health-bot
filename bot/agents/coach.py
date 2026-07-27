@@ -54,7 +54,7 @@ Cómo tenés que ser:
 
 async def classify_message(user_message: str) -> str:
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=CLASSIFY_PROMPT,
@@ -174,7 +174,7 @@ async def _estimate_with_ai(text: str) -> dict | None:
 Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
 {"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}"""
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=text,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -188,7 +188,7 @@ Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
 async def coach_response(user_message: str, user_context: str) -> str:
     full_system = user_context + "\n\n" + COACH_PROMPT if user_context else COACH_PROMPT
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=full_system,

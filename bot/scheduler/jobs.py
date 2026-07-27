@@ -255,7 +255,7 @@ async def daily_summary(app):
 Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa. Sin asteriscos ni markdown. Tono directo y personal."""
 
             feedback_response = await ai_client.aio.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.5-flash",
                 contents=prompt,
             )
             feedback = (feedback_response.text or "").strip()
