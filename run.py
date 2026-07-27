@@ -1,5 +1,13 @@
 import sys
+import os
 import logging
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 from bot.main import main
 from bot.utils.config_validator import validate_config
 

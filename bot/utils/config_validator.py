@@ -6,6 +6,12 @@ Asegura que todas las variables necesarias estén presentes.
 import os
 import sys
 from typing import List, Tuple
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 from bot.utils.config import (
     TELEGRAM_TOKEN,
     GEMINI_API_KEY,

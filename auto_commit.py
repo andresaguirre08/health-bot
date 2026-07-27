@@ -6,7 +6,14 @@ Uso: python auto_commit.py
 
 import subprocess
 import os
+import sys
 from datetime import datetime
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 def run_command(cmd, show_output=False):
     """Ejecuta un comando y retorna el resultado."""
