@@ -187,10 +187,7 @@ async def check_protein_evening(app):
 
 async def daily_summary(app):
     from bot.db.client import supabase
-    from bot.utils.config import GEMINI_API_KEY
-    from google import genai
-
-    ai_client = genai.Client(api_key=GEMINI_API_KEY)
+    from bot.utils.ai_helper import safe_generate_content
 
     try:
         today = get_today_bogota()
@@ -254,11 +251,8 @@ async def daily_summary(app):
 
 Escribí un feedback del día de máximo 3 líneas: qué hizo bien, qué puede mejorar mañana, y una frase de motivación corta y directa. Sin asteriscos ni markdown. Tono directo y personal."""
 
-            feedback_response = await ai_client.aio.models.generate_content(
-                model="gemini-3.5-flash",
-                contents=prompt,
-            )
-            feedback = (feedback_response.text or "").strip()
+            feedback_response = await safe_generate_content(contents=prompt)
+            feedback = (feedback_response.text or "").strip() if (feedback_response and feedback_response.text) else ""
 
             msg = (
                 f"📊 Resumen del día — {today}\n\n"

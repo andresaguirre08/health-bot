@@ -1,15 +1,12 @@
-from google import genai
 from google.genai import types
 import json
 import logging
 import re
-from bot.utils.config import GEMINI_API_KEY
+from bot.utils.ai_helper import safe_generate_content
 from bot.db.client import supabase
 from bot.utils.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
-
-client = genai.Client(api_key=GEMINI_API_KEY)
 
 SCAN_PROMPT = """Analizá esta imagen. Puede ser una tabla nutricional de un producto alimenticio.
 
@@ -38,15 +35,14 @@ Sin texto extra, sin markdown, solo JSON."""
 async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
     image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
-    response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash",
+    response = await safe_generate_content(
         contents=[image_part, SCAN_PROMPT],
         config=types.GenerateContentConfig(
-            max_output_tokens=400,
+            max_output_tokens=1024,
         )
     )
 
-    if not response.text:
+    if not response or not response.text:
         logger.warning("scan_nutrition_label: respuesta de Gemini sin contenido de texto")
         return {"is_nutrition_label": False}
 

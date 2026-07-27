@@ -1,12 +1,10 @@
-from google import genai
 from google.genai import types
-from bot.utils.config import GEMINI_API_KEY
+from bot.utils.ai_helper import safe_generate_content
 from bot.db.client import supabase
 from bot.utils.json_extract import extract_json
 from datetime import datetime
 import pytz
 
-client = genai.Client(api_key=GEMINI_API_KEY)
 BOGOTA_TZ = pytz.timezone("America/Bogota")
 
 
@@ -44,15 +42,14 @@ Reglas estrictas de respuesta:
 
 
 async def classify_message(user_message: str) -> str:
-    response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash",
+    response = await safe_generate_content(
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=CLASSIFY_PROMPT,
             max_output_tokens=10,
         )
     )
-    result = (response.text or "").strip().upper()
+    result = (response.text or "").strip().upper() if response else ""
     return "FOOD" if "FOOD" in result else "CHAT"
 
 
@@ -164,29 +161,27 @@ async def _estimate_with_ai(text: str) -> dict | None:
     system_prompt = """Sos un nutricionista. Estimá los macros de esta comida.
 Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
 {"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}"""
-    response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash",
+    response = await safe_generate_content(
         contents=text,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=300,
         )
     )
-    raw = response.text or ""
+    raw = response.text if (response and response.text) else ""
     return extract_json(raw)
 
 
 async def coach_response(user_message: str, user_context: str) -> str:
     full_system = user_context + "\n\n" + COACH_PROMPT if user_context else COACH_PROMPT
-    response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash",
+    response = await safe_generate_content(
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=full_system,
             max_output_tokens=2048,
         )
     )
-    return (response.text or "").strip()
+    return (response.text or "").strip() if (response and response.text) else ""
 
 
 async def process_message(user_message: str, user_context: str, user_id: str = None) -> dict:

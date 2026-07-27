@@ -1,12 +1,9 @@
-from google import genai
 from google.genai import types
 import logging
-from bot.utils.config import GEMINI_API_KEY
+from bot.utils.ai_helper import safe_generate_content
 from bot.utils.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
-
-client = genai.Client(api_key=GEMINI_API_KEY)
 
 ADVISOR_PROMPT = """Sos la nutricionista personal de Andrés. Te paso su contexto completo:
 perfil, objetivos diarios actuales, composición corporal y su tendencia, promedios de
@@ -44,16 +41,15 @@ calidez y cercanía, no como un reporte técnico. Máximo 6 líneas."""
 
 
 async def recommend_diet_adjustment(user_context: str) -> dict | None:
-    response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash",
+    response = await safe_generate_content(
         contents=user_context,
         config=types.GenerateContentConfig(
             system_instruction=ADVISOR_PROMPT,
-            max_output_tokens=700,
+            max_output_tokens=2048,
         )
     )
 
-    raw_text = response.text if response.text else ""
+    raw_text = response.text if (response and response.text) else ""
     parsed = extract_json(raw_text)
 
     if not parsed:

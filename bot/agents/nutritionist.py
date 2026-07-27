@@ -1,13 +1,11 @@
-from google import genai
 from google.genai import types
 import logging
 import re
-from bot.utils.config import GEMINI_API_KEY, DAILY_PROTEIN_G, DAILY_CALORIES
+from bot.utils.config import DAILY_PROTEIN_G, DAILY_CALORIES
+from bot.utils.ai_helper import safe_generate_content
 from bot.utils.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
-
-client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT_BASE = """Eres el nutricionista y coach personal de Andrés. Tu misión es ayudarle
 a reducir grasa corporal y peso al mínimo posible mientras mantiene y aumenta masa muscular.
@@ -75,16 +73,15 @@ async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
     if user_context:
         full_system = user_context + "\n\n" + SYSTEM_PROMPT_BASE
 
-    response = await client.aio.models.generate_content(
-        model="gemini-3.5-flash",
+    response = await safe_generate_content(
         contents=[image_part, "Analizá esta foto de mi comida."],
         config=types.GenerateContentConfig(
             system_instruction=full_system,
-            max_output_tokens=1024,
+            max_output_tokens=2048,
         )
     )
 
-    raw_text = response.text or ""
+    raw_text = response.text if (response and response.text) else ""
 
     parsed = extract_json(raw_text)
     if parsed:
