@@ -57,11 +57,14 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
     from bot.agents.nutrition_scanner import search_food_database
     import re
 
+    # Limpiar prefijos de comando antes de procesar ingredientes
+    clean_text = re.sub(r'^(?:listo\s+guardar|guardar|registrar)\s*[:;-]?\s*', '', user_message, flags=re.IGNORECASE).strip()
+
     db_matches = []
     remaining_parts = []
 
     if user_id:
-        ingredients = re.split(r',|\s+con\s+|\s+más\s+|\s+mas\s+|\s+y\s+|\s*\+\s*', user_message.lower())
+        ingredients = re.split(r',|\s+con\s+|\s+más\s+|\s+mas\s+|\s+y\s+|\s*\+\s*', clean_text.lower())
 
         for ingredient in ingredients:
             ingredient = ingredient.strip()
@@ -105,7 +108,7 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             if not found:
                 remaining_parts.append(ingredient)
     else:
-        remaining_parts.append(user_message.lower())
+        remaining_parts.append(clean_text.lower())
 
     remaining_text = ", ".join(remaining_parts).strip()
 
@@ -127,13 +130,13 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             total["fat_g"] += round((p.get("fat_g") or 0) * m, 1)
             names.append(p.get("product_name"))
 
-        if remaining_text and len(remaining_text) > 5:
+        if remaining_text and len(remaining_text) > 3:
             ai_result = await _estimate_with_ai(remaining_text)
             if ai_result:
-                total["calories"] += ai_result.get("calories", 0)
-                total["protein_g"] = round(total["protein_g"] + ai_result.get("protein_g", 0), 1)
-                total["carbs_g"] = round(total["carbs_g"] + ai_result.get("carbs_g", 0), 1)
-                total["fat_g"] = round(total["fat_g"] + ai_result.get("fat_g", 0), 1)
+                total["calories"] += round(float(ai_result.get("calories") or 0))
+                total["protein_g"] = round(total["protein_g"] + float(ai_result.get("protein_g") or 0), 1)
+                total["carbs_g"] = round(total["carbs_g"] + float(ai_result.get("carbs_g") or 0), 1)
+                total["fat_g"] = round(total["fat_g"] + float(ai_result.get("fat_g") or 0), 1)
                 source_msg = f"📦 Base: {', '.join(names)} + 🤖 IA para el resto"
             else:
                 source_msg = f"📦 Base: {', '.join(names)}"
@@ -141,16 +144,16 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
             source_msg = f"📦 Base: {', '.join(names)}"
 
         return {
-            "description": user_message[:100],
+            "description": clean_text[:100],
             "calories": total["calories"],
             "protein_g": total["protein_g"],
             "carbs_g": total["carbs_g"],
             "fat_g": total["fat_g"],
-            "source": "mixed" if remaining_text else "database",
+            "source": "mixed" if (remaining_text and len(remaining_text) > 3) else "database",
             "db_product": source_msg
         }
 
-    ai_result = await _estimate_with_ai(user_message)
+    ai_result = await _estimate_with_ai(clean_text)
     if ai_result:
         ai_result["source"] = "ai"
         return ai_result
@@ -158,14 +161,15 @@ async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict
 
 
 async def _estimate_with_ai(text: str) -> dict | None:
-    system_prompt = """Sos un nutricionista. Estimá los macros de esta comida.
-Respondé SOLO con JSON válido sin texto extra, sin markdown, sin backticks:
-{"description":"nombre","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}"""
+    system_prompt = """Sos un nutricionista. Estimá los macros totales de esta comida.
+Respondé SOLO con JSON válido en este formato exacto:
+{"description":"nombre descriptivo","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}"""
     response = await safe_generate_content(
         contents=text,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
-            max_output_tokens=300,
+            response_mime_type="application/json",
+            max_output_tokens=1024,
         )
     )
     raw = response.text if (response and response.text) else ""

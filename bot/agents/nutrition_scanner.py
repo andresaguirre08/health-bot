@@ -38,6 +38,7 @@ async def scan_nutrition_label(image_bytes: bytes, mime_type: str = "image/jpeg"
     response = await safe_generate_content(
         contents=[image_part, SCAN_PROMPT],
         config=types.GenerateContentConfig(
+            response_mime_type="application/json",
             max_output_tokens=1024,
         )
     )

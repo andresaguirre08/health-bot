@@ -45,6 +45,7 @@ async def recommend_diet_adjustment(user_context: str) -> dict | None:
         contents=user_context,
         config=types.GenerateContentConfig(
             system_instruction=ADVISOR_PROMPT,
+            response_mime_type="application/json",
             max_output_tokens=2048,
         )
     )
