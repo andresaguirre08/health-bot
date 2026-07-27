@@ -54,126 +54,69 @@ async def classify_message(user_message: str) -> str:
 
 
 async def extract_meal_from_text(user_message: str, user_id: str = None) -> dict | None:
-    from bot.agents.nutrition_scanner import search_food_database
+    from bot.agents.nutrition_scanner import get_all_products
     import re
 
-    # Limpiar prefijos de comando antes de procesar ingredientes
-    clean_text = re.sub(r'^(?:listo\s+guardar|guardar|registrar)\s*[:;-]?\s*', '', user_message, flags=re.IGNORECASE).strip()
+    # Limpiar prefijos de comandos comunes
+    clean_text = re.sub(
+        r'^(?:almorc[eé]|desayun[eé]|cen[eé]|com[ií]|listo\s+guardar|guardar|registrar)\s*[:;-]?\s*',
+        '',
+        user_message,
+        flags=re.IGNORECASE
+    ).strip()
 
-    db_matches = []
-    remaining_parts = []
-
+    db_products = []
     if user_id:
-        ingredients = re.split(r',|\s+con\s+|\s+más\s+|\s+mas\s+|\s+y\s+|\s*\+\s*', clean_text.lower())
+        try:
+            db_products = await get_all_products(user_id)
+        except Exception:
+            db_products = []
 
-        for ingredient in ingredients:
-            ingredient = ingredient.strip()
-            if len(ingredient) < 3:
-                continue
-
-            found = False
-            words = [w for w in ingredient.split() if len(w) > 3]
-            for word in words:
-                results = await search_food_database(user_id, word)
-                if results:
-                    db_product = results[0]
-
-                    quantity_match = re.search(
-                        r'(\d+(?:\.\d+)?)\s*(g|gr|gramos|ml|kg)?'
-                        r'(?:\s*(?:de\s+)?(?:scoop|scoops|cuchara\s+medidora|cucharas\s+medidoras|'
-                        r'unidad|unidades|lonja|lonjas|taza|tazas|cdas?|porcion|porciones|'
-                        r'vaso|vasos|tajada|tajadas|rebanada|rebanadas|sobre|sobres))?',
-                        ingredient
-                    )
-                    multiplier = 1.0
-                    if quantity_match:
-                        quantity = float(quantity_match.group(1))
-                        unit = (quantity_match.group(2) or "").lower()
-                        serving_size = db_product.get("serving_size_g") or 1
-
-                        if unit in ("g", "gr", "gramos", "ml", "kg"):
-                            if unit == "kg":
-                                quantity *= 1000
-                            multiplier = quantity / serving_size if serving_size > 0 else 1.0
-                        else:
-                            multiplier = quantity
-
-                    db_matches.append({
-                        "product": db_product,
-                        "multiplier": multiplier,
-                    })
-                    found = True
-                    break
-
-            if not found:
-                remaining_parts.append(ingredient)
-    else:
-        remaining_parts.append(clean_text.lower())
-
-    remaining_text = ", ".join(remaining_parts).strip()
-
-    if db_matches:
-        total = {
-            "calories": 0,
-            "protein_g": 0.0,
-            "carbs_g": 0.0,
-            "fat_g": 0.0
-        }
-        names = []
-
-        for match in db_matches:
-            p = match["product"]
-            m = match["multiplier"]
-            total["calories"] += round((p.get("calories_per_serving") or 0) * m)
-            total["protein_g"] += round((p.get("protein_g") or 0) * m, 1)
-            total["carbs_g"] += round((p.get("carbs_g") or 0) * m, 1)
-            total["fat_g"] += round((p.get("fat_g") or 0) * m, 1)
-            names.append(p.get("product_name"))
-
-        if remaining_text and len(remaining_text) > 3:
-            ai_result = await _estimate_with_ai(remaining_text)
-            if ai_result:
-                total["calories"] += round(float(ai_result.get("calories") or 0))
-                total["protein_g"] = round(total["protein_g"] + float(ai_result.get("protein_g") or 0), 1)
-                total["carbs_g"] = round(total["carbs_g"] + float(ai_result.get("carbs_g") or 0), 1)
-                total["fat_g"] = round(total["fat_g"] + float(ai_result.get("fat_g") or 0), 1)
-                source_msg = f"📦 Base: {', '.join(names)} + 🤖 IA para el resto"
-            else:
-                source_msg = f"📦 Base: {', '.join(names)}"
-        else:
-            source_msg = f"📦 Base: {', '.join(names)}"
-
-        return {
-            "description": clean_text[:100],
-            "calories": total["calories"],
-            "protein_g": total["protein_g"],
-            "carbs_g": total["carbs_g"],
-            "fat_g": total["fat_g"],
-            "source": "mixed" if (remaining_text and len(remaining_text) > 3) else "database",
-            "db_product": source_msg
-        }
-
-    ai_result = await _estimate_with_ai(clean_text)
+    ai_result = await _estimate_meal_with_context(clean_text, db_products)
     if ai_result:
         ai_result["source"] = "ai"
         return ai_result
     return None
 
 
-async def _estimate_with_ai(text: str) -> dict | None:
-    system_prompt = """Sos un nutricionista. Estimá los macros totales de esta comida.
+async def _estimate_meal_with_context(text: str, db_products: list = None) -> dict | None:
+    db_info = ""
+    if db_products:
+        db_info = "\n\nProductos preferidos de la base de datos personal del usuario (usá sus valores exactos si los menciona explícitamente):\n"
+        for p in db_products:
+            db_info += f"- {p.get('product_name')}: {p.get('calories_per_serving')} kcal, {p.get('protein_g')}g proteína por porción de {p.get('serving_description') or str(p.get('serving_size_g')) + 'g'}\n"
+
+    system_prompt = f"""Sos un nutricionista experto. El usuario describió una comida o receta.
+Tu trabajo es analizar TODOS los ingredientes mencionados con sus porciones reales y calcular los macronutrientes totales.{db_info}
+
+Reglas estrictas:
+1. Analizá CADA ingrediente mencionado (carnes, huevos, caldos, vegetales, fideos, aceites, mantecas, salsas, etc.).
+2. "manteca de leche" o "mantequilla" es grasa para cocinar (~100 kcal, ~11g grasa por cucharada). NO es leche líquida ni leche descremada.
+3. "caldo de res sin grasa" es caldo de res (~15-20 kcal por 400ml).
+4. Sumá con precisión nutricional real las calorías, proteínas, carbohidratos y grasas de TODOS los ingredientes.
+
 Respondé SOLO con JSON válido en este formato exacto:
-{"description":"nombre descriptivo","calories":0,"protein_g":0,"carbs_g":0,"fat_g":0}"""
+{{"calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0, "description": "resumen breve de todos los alimentos detectados"}}"""
+
     response = await safe_generate_content(
         contents=text,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             response_mime_type="application/json",
-            max_output_tokens=1024,
+            max_output_tokens=2048,
         )
     )
     raw = response.text if (response and response.text) else ""
-    return extract_json(raw)
+    parsed = extract_json(raw)
+    if parsed:
+        return {
+            "description": parsed.get("description") or text[:100],
+            "calories": round(float(parsed.get("calories") or 0)),
+            "protein_g": round(float(parsed.get("protein_g") or 0), 1),
+            "carbs_g": round(float(parsed.get("carbs_g") or 0), 1),
+            "fat_g": round(float(parsed.get("fat_g") or 0), 1),
+        }
+    return None
 
 
 async def coach_response(user_message: str, user_context: str) -> str:
