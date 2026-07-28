@@ -54,6 +54,21 @@ async def build_user_context(user_id: str) -> str:
         .gte("logged_at", week_ago)\
         .execute()
 
+    # Entrenamientos de HOY
+    today_workouts = supabase.table("workouts")\
+        .select("activity_type, duration_min, calories_burned")\
+        .eq("user_id", user_id)\
+        .eq("workout_date", today)\
+        .execute()
+
+    today_burned = sum(w.get("calories_burned") or 0 for w in today_workouts.data)
+    today_workout_list = ""
+    if today_workouts.data:
+        for w in today_workouts.data:
+            today_workout_list += f"- {w.get('activity_type', 'entreno')}: {w.get('duration_min')} min — {w.get('calories_burned')} kcal quemadas\n"
+    else:
+        today_workout_list = "- Sin entrenamientos registrados hoy\n"
+
     # Entrenamientos última semana
     week_workouts = supabase.table("workouts")\
         .select("activity_type, duration_min, calories_burned, workout_date")\
@@ -67,9 +82,9 @@ async def build_user_context(user_id: str) -> str:
     today_carbs = sum(float(m.get("carbs_g") or 0) for m in today_meals.data)
     today_fat = sum(float(m.get("fat_g") or 0) for m in today_meals.data)
     today_meal_count = len(today_meals.data)
+    net_calories_today = today_calories - today_burned
 
-    # Listado real de las comidas de hoy — sin esto la IA no tiene forma de
-    # saber qué comió puntualmente y termina inventando platos plausibles.
+    # Listado real de las comidas de hoy
     today_meals_list = ""
     if today_meals.data:
         for m in today_meals.data:
@@ -129,10 +144,17 @@ Entrenamientos esta semana: {total_workouts} sesiones
 - Calorías quemadas: {total_burned} kcal
 - Actividades: {', '.join(types)}"""
 
-    # Calcular proteína pendiente
-    protein_remaining = max(0, u.get("daily_protein_g", 180) - today_protein)
-    calories_remaining = max(0, u.get("daily_calories", 2000) - today_calories)
-    protein_pct = round((today_protein / u.get("daily_protein_g", 180)) * 100) if u.get("daily_protein_g") else 0
+    # Calcular macronutrientes restantes/pendientes para hoy
+    daily_cal_goal = float(u.get("daily_calories") or 2000)
+    daily_prot_goal = float(u.get("daily_protein_g") or 180)
+    daily_carbs_goal = float(u.get("daily_carbs_g") or 150)
+    daily_fat_goal = float(u.get("daily_fat_g") or 60)
+
+    protein_remaining = max(0.0, daily_prot_goal - today_protein)
+    carbs_remaining = max(0.0, daily_carbs_goal - today_carbs)
+    fat_remaining = max(0.0, daily_fat_goal - today_fat)
+    calories_remaining = max(0, int(daily_cal_goal - net_calories_today))
+    protein_pct = round((today_protein / daily_prot_goal) * 100) if daily_prot_goal else 0
 
     context = f"""=== CONTEXTO PERSONALIZADO DE ANDRÉS ===
 
@@ -143,26 +165,34 @@ PERFIL:
 {body_section}
 
 OBJETIVOS DIARIOS:
-- Calorías: {u.get('daily_calories')} kcal
-- Proteína: {u.get('daily_protein_g')} g
-- Carbohidratos: {u.get('daily_carbs_g')} g
-- Grasas: {u.get('daily_fat_g')} g
+- Calorías: {daily_cal_goal:.0f} kcal
+- Proteína: {daily_prot_goal:.0f} g
+- Carbohidratos: {daily_carbs_goal:.0f} g
+- Grasas: {daily_fat_goal:.0f} g
 
 HOY ({today}):
-- Comidas registradas: {today_meal_count}
-{today_meals_list}- Calorías consumidas: {today_calories} / {u.get('daily_calories')} kcal
-- Proteína consumida: {today_protein:.1f}g / {u.get('daily_protein_g')}g ({protein_pct}%)
-- Carbohidratos: {today_carbs:.1f}g
-- Grasas: {today_fat:.1f}g
-- ⚡ Proteína pendiente: {protein_remaining:.1f}g
-- 🔥 Calorías restantes: {calories_remaining}
+- Comidas registradas hoy ({today_meal_count}):
+{today_meals_list}- Entrenamientos de hoy:
+{today_workout_list}
+- 🔥 Calorías consumidas hoy: {today_calories} kcal
+- 🏃 Calorías quemadas entrenando hoy: {today_burned} kcal
+- ⚖️ Calorías netas de hoy (Consumidas - Quemadas): {net_calories_today} kcal / {daily_cal_goal:.0f} kcal
+- 💪 Proteína consumida hoy: {today_protein:.1f}g / {daily_prot_goal:.0f}g ({protein_pct}%)
+- 🍚 Carbohidratos consumidos hoy: {today_carbs:.1f}g / {daily_carbs_goal:.0f}g
+- 🥑 Grasas consumidas hoy: {today_fat:.1f}g / {daily_fat_goal:.0f}g
+
+🎯 MACRONUTRIENTES Y CALORÍAS PENDIENTES / DISPONIBLES PARA LA CENA O RESTO DEL DÍA:
+- Proteína pendiente: {protein_remaining:.1f}g
+- Carbohidratos pendientes: {carbs_remaining:.1f}g
+- Grasas pendientes: {fat_remaining:.1f}g
+- Calorías netas disponibles: {calories_remaining} kcal
 
 PROMEDIOS ÚLTIMOS 7 DÍAS:
 - Calorías/día: {avg_calories:.0f} kcal
 - Proteína/día: {avg_protein:.1f}g
 - Carbohidratos/día: {avg_carbs:.1f}g
 - Grasas/día: {avg_fat:.1f}g
-- Cumplimiento proteína: {'✅ bien' if avg_protein >= u.get('daily_protein_g', 180) * 0.8 else '⚠️ bajo, necesita mejorar'}
+- Cumplimiento proteína: {'✅ bien' if avg_protein >= daily_prot_goal * 0.8 else '⚠️ bajo, necesita mejorar'}
 {workout_section}
 
 === FIN CONTEXTO ==="""
