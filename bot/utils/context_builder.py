@@ -75,6 +75,7 @@ async def build_user_context(user_id: str) -> str:
         for m in today_meals.data:
             label = MEAL_TYPE_LABELS.get(m.get("meal_type", ""), m.get("meal_type", "comida"))
             hora = (m.get("logged_at") or "")[11:16]
+            desc = m.get("description") or "sin descripción"
             cal = m.get("calories") or 0
             prot = float(m.get("protein_g") or 0)
             carbs = float(m.get("carbs_g") or 0)
