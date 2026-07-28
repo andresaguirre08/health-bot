@@ -107,7 +107,8 @@ Respondé SOLO con JSON válido en este formato exacto:
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             response_mime_type="application/json",
-            max_output_tokens=8192,
+            max_output_tokens=1000,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
     )
     raw = response.text if (response and response.text) else ""
@@ -129,7 +130,8 @@ async def coach_response(user_message: str, user_context: str) -> str:
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=full_system,
-            max_output_tokens=8192,
+            max_output_tokens=1000,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
     )
     return (response.text or "").strip() if (response and response.text) else ""

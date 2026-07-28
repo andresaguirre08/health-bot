@@ -78,7 +78,8 @@ async def analyze_food_photo(image_bytes: bytes, mime_type: str = "image/jpeg",
         config=types.GenerateContentConfig(
             system_instruction=full_system,
             response_mime_type="application/json",
-            max_output_tokens=8192,
+            max_output_tokens=1000,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
     )
 
